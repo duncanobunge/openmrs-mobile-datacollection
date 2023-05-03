@@ -1,0 +1,2653 @@
+<!--
+  ~ The contents of this file are subject to the OpenMRS Public License
+  ~ Version 1.0 (the "License"); you may not use this file except in
+  ~ compliance with the License. You may obtain a copy of the License at
+  ~ http://license.openmrs.org
+  ~
+  ~ Software distributed under the License is distributed on an "AS IS"
+  ~ basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See the
+  ~ License for the specific language governing rights and limitations
+  ~ under the License.
+  ~
+  ~ Copyright (C) OpenMRS, LLC.  All Rights Reserved.
+
+-->
+<htmlform>
+
+    <ifMode mode="VIEW" include="false"><script type="text/javascript" src="../moduleResources/kenyaemr/scripts/moment.js"></script></ifMode>
+    <ifMode mode="VIEW" include="false"><link rel="stylesheet" type="text/css" href="../moduleResources/kenyaemr/styles/kenyaemr_ml_scoring.css"></link></ifMode>
+    <script type="text/javascript">
+        var pAge = parseInt('<lookup expression="patient.age"/>');
+        var pgender = "<lookup expression="patient.gender" />";
+        var mlCaseFindingEnabled = "<lookup expression="fn.globalProperty('kenyaemrml.casefinding.feature.enabled')"/>";
+        //On Ready
+        $(document).ready(function () {
+            //pop type
+            // jq('#div-ml-prediction').hide();
+            jq("#btn-ml-prediction").click(hivPrediction);
+
+            //Consent validation
+            // jq('.consent input').change(consentSelected);
+
+            //defaults
+            jq("#key-population").hide();
+            jq("#priority-population").hide();
+            jq('#test-result').hide();
+            jq('#tr-art-start-date').hide();
+            jq('#positive-client').hide();
+            jq('#tr-sexually-active').hide();
+            jq('#tr-needle-stick').hide();
+            jq('#tr-needle-shared').hide();
+            jq('#tr-reasons-not-refered').hide();
+            jq('#experienced-physical-violence').hide();
+            jq('#sex-againist-wish').hide();
+            jq('#tbl-other-priority-population').hide();
+            jq('#tbl-other-decline-reason').hide();
+            jq('#screening-questions').hide();
+            jq('#no-sex-partners input').prop('disabled', true);
+            jq('#currently-prep input').prop('disabled', true);
+            jq('#currently-pep input').prop('disabled', true);
+            jq('#currently-sti input').prop('disabled', true);
+            // jq('#screened-tb input').prop('disabled', true);
+            jq('#tr-testing-reasons').hide();
+            jq('#tr-not-testing-reasons').hide();
+            jq('#supported-reason').hide();
+            jq('#tbl-other-strategy').hide();
+
+            //strategy selected
+            jq('.hts-strategy select').change(strategySelected);
+            jq('#strategy select').change(strategySelected);
+            //disability
+            jq('#has-disability input').change(isDisabilitySelected);
+            jq('#population-type :input[type=radio]').change(populationTypeSelected);
+            jq('#test-history :input[type=radio]').change(everTested);
+            jq('#mothers-hiv-status :input[type=radio]').change(motherTestStatus);
+            jq('#health-worker :input[type=radio]').change(healthWorkerSelected);
+            jq('#referred :input[type=radio]').change(referredSelected);
+            jq('#ever-tested select').change(testResultsSelected);
+            jq('#ever-had-sex').change(everHadSexSelected);
+            jq('#multiple-sex-partners').change(multipleSexualPartnersSelected);
+            jq('#experienced-gbv').change(experiencedGBVSelected);
+            jq('#prep-service :input[type=checkbox]').change(prepServiceSelected);
+            jq('#pep-service :input[type=checkbox]').change(pepServiceSelected);
+            jq('#sti-service :input[type=checkbox]').change(stiServiceSelected);
+            // jq('#tb-service :input[type=checkbox]').change(tbServiceSelected);
+            jq('#pwid :input[type=checkbox]').change(pwidSelected);
+            jq('#other-priority-population :input[type=checkbox]').change(otherPriorityPopulationSelected);
+            jq('#other-decline-reason :input[type=checkbox]').change(otherDeclineReasonSelected);
+            jq('#index-relationship :input[type=checkbox]').change(indexRelationshipSelected);
+            jq('#screened-tb :input[type=radio]').change(tbScreenedSelected);
+            jq('#recommended-test :input[type=radio]').change(recommendedForTestSelected);
+
+
+            if(pgender == 'M' || pAge &lt; 10 ){
+                jq("#department option[value='160538']").hide();  //PMTCT
+             }else{
+                jq("#department option[value='160538']").show();  //PMTCT
+            }
+
+            if(pAge &lt; 10 ){
+               //Disable key and priority pop for under 10 yrs
+                jq("#population-type input[value=164929]").prop("disabled",true);
+                jq("#population-type input[value=138643]").prop("disabled",true);
+                jq("#population-type input[value=164928]").prop("checked", true);
+            }else{
+                jq("#population-type input[value=164929]").prop("disabled",false);
+                jq("#population-type input[value=138643]").prop("disabled",false);
+                jq("#population-type input[value=164928]").prop("checked", false);
+            }
+
+            //HTS Strategy
+            var htsStrategySelected = getField('strategy.value').val();
+            if (htsStrategySelected == 159938 ){
+                getField('hts-entry-point.value').prop("selectedIndex", 14);
+            }else if (htsStrategySelected == 159939 ){
+                getField('hts-entry-point.value').prop("selectedIndex", 15);
+            }else if (htsStrategySelected == 164954 || htsStrategySelected == 164955){
+                getField('hts-entry-point.value').prop("selectedIndex", 9);
+            }
+            // Specify other
+            if (htsStrategySelected == 5622){
+                jq('#tbl-other-strategy').show();
+            }else{
+                jq('#tbl-other-strategy').hide();
+            }
+
+            //disability
+            jq('#has-other-disability :input[type=checkbox]').change(otherDisabilitySelected);
+            var hasDisability = getValue('has-disability.value');
+
+            // Specify other
+            if (hasDisability == 1065) {
+                jq('#disability').show();
+                jq('#tbl-other-disability').show();
+            }
+
+            //TB screening validation
+            var screeningRadios = jq('#screening-questions').find('input[type=radio]');
+            screeningRadios.change(function() {
+                tbResultsValidation();
+            });
+
+            var tbResultsValidation = function() {
+                var tbScreeningResultsStatus = jq("#tb-result-status");
+                const YES_CONCEPT_ID = 1065;
+                const NO_CONCEPT_ID = 1066;
+                var screeningYesResponses = [];
+                var screeningNoResponses = [];
+                jq.each(screeningRadios, function () {    //Fetch responses for the screening questions
+//Push any responses to the respective screeningYesResponses and screeningNoResponses array
+                    const COUGH = 159799;
+                    const CONTACT = 124068;
+                    const FEVER = 1494;
+                    const WEIGHTLOSS = 832;
+                    const SWEAT = 133027;
+                    const LETHERGY = 116334;
+//Push any responses to the respective screeningYesResponses and screeningNoResponses array
+                    if ((this.value == COUGH || this.value == CONTACT || this.value == FEVER || this.value == WEIGHTLOSS || this.value == SWEAT || this.value == LETHERGY ) &amp;&amp; this.checked == true) {
+                        screeningYesResponses.push(this);
+                    }
+                    if (this.value == NO_CONCEPT_ID &amp;&amp; this.checked == true) {
+                        screeningNoResponses.push(this);
+                    }
+                });
+
+                if (screeningYesResponses.length &gt; 0) { // presumed tb if any Yes response
+                    jq("#tb-result-status input[value=142177]").prop("checked", true);
+                }
+                //Check if we have all NO responses
+                if (screeningNoResponses.length &gt; 0 &amp;&amp; screeningYesResponses.length == 0 ) {
+                    jq("#tb-result-status input[value=1660]").prop("checked", true);
+                }
+                //If no responses have been recorded then dont show any results
+                if (screeningYesResponses.length == 0 &amp;&amp; screeningNoResponses.length == 0) {
+                }
+            }
+
+        });
+
+        var otherDisabilitySelected = function() {
+            var hasOtherDisabilityChecked = jq("#has-other-disability input:checkbox:checked");
+            if (hasOtherDisabilityChecked.length == 0) {
+                jq('#tbl-other-disability').hide();
+            } else {
+                jq('#tbl-other-disability').show();
+            }
+        }
+
+        var isDisabilitySelected = function () {
+            var val = jq(this).val();
+            if (val == 1066 ){
+                jq('#disability').hide();
+                jq('#tbl-other-disability').hide();
+                jq('#disability select').prop("disabled", true);
+                jq('#disability select').val('');
+                clearHiddenSections(jq('#disability'));
+                clearHiddenSections(jq('#other-disability'));
+            }else{
+                jq('#disability').show();
+                jq('#disability select').prop("disabled", false);
+            }
+        }
+
+        var populationTypeSelected = function () {
+            var val = jq(this).val();
+            var keypop = jq('#key-population');
+            var pripop = jq('#priority-population');
+            if (val == 164929 ){
+                jq("#key-population").show();
+                jq("#priority-population").hide();
+                clearHiddenSections(pripop);
+            }
+            if (val == 138643 ){
+                jq("#priority-population").show();
+                jq("#key-population").hide();
+                clearHiddenSections(keypop);
+            }
+            if(val == 164928){
+                jq("#key-population").hide();
+                jq("#priority-population").hide();
+                clearHiddenSections(keypop);
+                clearHiddenSections(pripop);
+            }
+        }
+
+        var motherTestStatus = function (){
+            var val = jq(this).val();
+            var testHistory = getValue('test-history.value');
+
+            if (val == 703 &amp;&amp; testHistory == 1066 ){
+                jq('#fs-risk-assessment').hide();
+                jq('#fs-children-eligibility').hide();
+                jq("#eligible-test input[value=1065]").prop("checked", true);
+            }
+            if(val == 664 || val == 1067) {
+                jq('#fs-risk-assessment').show();
+                jq('#fs-children-eligibility').show();
+                jq("#eligible-test input[value=1065]").prop("checked", false);
+            }
+        }
+
+        var strategySelected = function () {
+            var val = jq(this).val();
+            if (val == 159938 ){
+                getField('hts-entry-point.value').prop("selectedIndex", 14);
+            }else if (val == 159939 ){
+                getField('hts-entry-point.value').prop("selectedIndex", 15);
+            }else if (val == 164954 || val == 164955){
+                getField('hts-entry-point.value').prop("selectedIndex", 9);
+            }
+            // Specify other
+            if (val == 5622){
+                jq('#tbl-other-strategy').show();
+            }else{
+                jq('#tbl-other-strategy').hide();
+            }
+        }
+
+        var everTested = function (){
+            var val = jq(this).val();
+            var mothersStatus = getValue('mothers-hiv-status.value');
+            var testedBy = jq('#tester');
+            var testResults = jq('#ever-tested');
+            var testDate = jq('#date-tested');
+            var artStartDate = jq('#started-art');
+            var upn = jq('#upn-concept');
+
+            if ((val == 1066 &amp;&amp; mothersStatus == 703) || val == 1066 ){
+                clearHiddenSections(testDate);
+                clearHiddenSections(testedBy);
+                clearHiddenSections(testResults);
+                clearHiddenSections(artStartDate);
+                clearHiddenSections(upn);
+                jq('#test-result').hide();
+                jq('#tr-art-start-date').hide();
+                jq('#positive-client').hide();
+                jq('#positive-client').hide();
+                if(pAge &lt; 10 ) {
+                    jq('#fs-risk-assessment').hide();
+                }
+                jq('#fs-children-eligibility').hide();
+                jq("#eligible-test input[value=1065]").prop("checked", true);
+
+            }
+            if (val == 1065){
+                if(pAge &lt; 10 ) {
+                    jq('#fs-risk-assessment').show();
+                }
+                jq('#fs-children-eligibility').show();
+                jq("#eligible-test input[value=1065]").prop("checked", false);
+                jq('#eligible-for-test').show();
+                jq('#test-result').show();
+                jq('#tr-art-start-date').show();
+            }
+        }
+
+        var testResultsSelected = function (){
+            var val = jq(this).val();
+            var testDate = jq('#date-tested');
+            var artStartDate = jq('#started-art');
+            var upn = jq('#upn-concept');
+
+            if (val == 664 ){
+                jq('#date-tested :input').prop('disabled', false);
+                jq('#started-art :input').prop('disabled', true);
+                jq('#upn-concept :input').prop('disabled', true);
+                jq('#positive-client').hide();
+                jq('#fs-risk-assessment').show();
+                jq('#fs-pregnancy-assessment').show();
+                jq('#fs-children-eligibility').show();
+                jq("#eligible-test input[value=1066]").prop("checked", false);
+                clearHiddenSections(testDate);
+                clearHiddenSections(artStartDate);
+                clearHiddenSections(upn);
+
+            }
+            if (val == 703){
+                jq('#positive-client').show();
+                jq('#date-tested :input').prop('disabled', false);
+                jq('#started-art :input').prop('disabled', false);
+                jq('#upn-concept :input').prop('disabled', false);
+                jq('#fs-risk-assessment').hide();
+                jq('#fs-pregnancy-assessment').hide();
+                jq('#fs-children-eligibility').hide();
+                jq("#eligible-test input[value=1066]").prop("checked", true);
+
+                clearHiddenSections(jq('#sexually-active'));
+                clearHiddenSections(jq('#active-sexually'));
+                clearHiddenSections(jq('#new-partner'));
+                clearHiddenSections(jq('#active-sexually'));
+                clearHiddenSections(jq('#partner-hiv-status'));
+                clearHiddenSections(jq('#couple-discordant'));
+                clearHiddenSections(jq('#multiple-sex-partners'));
+                clearHiddenSections(jq('#no-sex-partners'));
+                clearHiddenSections(jq('#alcoholic-sex'));
+                clearHiddenSections(jq('#money-sex'));
+                clearHiddenSections(jq('#condom-burst'));
+                clearHiddenSections(jq('#stranger-sex'));
+                clearHiddenSections(jq('#known-positive'));
+                clearHiddenSections(jq('#experienced-gbv'));
+                clearHiddenSections(jq('#sexual-violence'));
+                clearHiddenSections(jq('#emotional-violence'));
+                clearHiddenSections(jq('#physical-violence'));
+                clearHiddenSections(jq('#prep-service'));
+                clearHiddenSections(jq('#currently-prep'));
+                clearHiddenSections(jq('#currently-pep'));
+                clearHiddenSections(jq('#pep-service'));
+                clearHiddenSections(jq('#sti-service'));
+                clearHiddenSections(jq('#currently-sti'));
+                // clearHiddenSections(jq('#tb-service'));
+                clearHiddenSections(jq('#screened-tb'));
+                clearHiddenSections(jq('#scr-cough'));
+                clearHiddenSections(jq('#scr-fever'));
+                clearHiddenSections(jq('#scr-weight'));
+                clearHiddenSections(jq('#scr-sweat'));
+                clearHiddenSections(jq('#scr-contact'));
+                clearHiddenSections(jq('#scr-lethergy'));
+                clearHiddenSections(jq('#tb-result-status'));
+                clearHiddenSections(jq('#needle-shared'));
+                clearHiddenSections(jq('#needle-stick'));
+                clearHiddenSections(jq('#scarification'));
+                clearHiddenSections(jq('#malnutrition'));
+                clearHiddenSections(jq('#growth-rate'));
+                clearHiddenSections(jq('#infections'));
+                clearHiddenSections(jq('#tb-infection'));
+                clearHiddenSections(jq('#orphaned'));
+                clearHiddenSections(jq('#parent-positive'));
+                clearHiddenSections(jq('#prolonged-fever'));
+                clearHiddenSections(jq('#still-breastfeering'));
+            }
+            if (val == 1067){
+                jq('#positive-client').hide();
+                jq('#date-tested :input').prop('disabled', true);
+                jq('#started-art :input').prop('disabled', true);
+                jq('#upn-concept :input').prop('disabled', true);
+                jq('#fs-risk-assessment').show();
+                jq('#fs-pregnancy-assessment').show();
+                jq('#fs-children-eligibility').show();
+                jq("#eligible-test input[value=1066]").prop("checked", false);
+            }
+        }
+
+        var everHadSexSelected = function(){
+            var val = getValue('ever-had-sex.value');
+
+            if(val == 'true'  &amp;&amp; pAge &gt; 10) {
+                jq('#tr-sexually-active').show();
+            }  else{
+                jq('#tr-sexually-active').hide();
+                clearHiddenSections(jq('#new-partner'));
+                clearHiddenSections(jq('#active-sexually'));
+                clearHiddenSections(jq('#partner-hiv-status'));
+                clearHiddenSections(jq('#couple-discordant'));
+                clearHiddenSections(jq('#multiple-sex-partners'));
+                clearHiddenSections(jq('#no-sex-partners'));
+                clearHiddenSections(jq('#alcoholic-sex'));
+                clearHiddenSections(jq('#money-sex'));
+                clearHiddenSections(jq('#condom-burst'));
+                clearHiddenSections(jq('#stranger-sex'));
+                clearHiddenSections(jq('#known-positive'));
+            }
+        }
+
+        var multipleSexualPartnersSelected = function(){
+            var val = getValue('multiple-sex-partners.value');
+
+            if(val == 'true') {
+                jq('#no-sex-partners input').prop('disabled', false);
+            }  else{
+                jq('#no-sex-partners input').prop('disabled', true);
+                clearHiddenSections(jq('#no-sex-partners'));
+            }
+        }
+
+        var experiencedGBVSelected = function(){
+            var val = getValue('experienced-gbv.value');
+
+            if(val == 1065) {
+                jq('#experienced-physical-violence').show();
+                jq('#sex-againist-wish').show();
+            }  else{
+                jq('#experienced-physical-violence').hide();
+                jq('#sex-againist-wish').hide();
+                clearHiddenSections(jq('#experienced-physical-violence'));
+                clearHiddenSections(jq('#sex-againist-wish'));
+            }
+        }
+        //Prep selected
+        var prepServiceSelected = function(){
+            var val = jq(this).val();
+            var prepChecked = jq("#prep-service input:checkbox:checked");
+            if(val == 1065 &amp;&amp; prepChecked.length >=1){
+                jq('#currently-prep input').prop('disabled', false);
+            }else{
+                jq("#currently-prep input[value=1065]").prop("checked", false);
+                jq("#currently-prep input[value=1066]").prop("checked", false);
+                jq('#currently-prep input').prop('disabled', true);
+            }
+        }
+        //Pep selected
+        var pepServiceSelected = function(){
+            var val = jq(this).val();
+            var pepChecked = jq("#pep-service input:checkbox:checked");
+            if(val == 1065 &amp;&amp; pepChecked.length >=1){
+                jq('#currently-pep input').prop('disabled', false);
+            }else{
+                jq("#currently-pep input[value=false]").prop("checked", false);
+                jq("#currently-pep input[value=true]").prop("checked", false);
+                jq('#currently-pep input').prop('disabled', true);
+            }
+        }
+        //Sti selected
+        var stiServiceSelected = function(){
+            var val = jq(this).val();
+            var stiChecked = jq("#sti-service input:checkbox:checked");
+            if(val == 1065 &amp;&amp; stiChecked.length >=1){
+                jq('#currently-sti input').prop('disabled', false);
+            }else{
+                jq("#currently-sti input[value=1065]").prop("checked", false);
+                jq("#currently-sti input[value=1066]").prop("checked", false);
+                jq('#currently-sti input').prop('disabled', true);
+            }
+        }
+
+        //TB service selected
+        // var tbServiceSelected = function(){
+        //     var val = jq(this).val();
+        //     var tbChecked = jq("#tb-service input:checkbox:checked");
+        //     if(val == 1065 &amp;&amp; tbChecked.length >=1){
+        //         jq('#screened-tb input').prop('disabled', false);
+        //     }else{
+        //         jq("#screened-tb input[value=1065]").prop("checked", false);
+        //         jq("#screened-tb input[value=1066]").prop("checked", false);
+        //         jq('#screened-tb input').prop('disabled', true);
+        //     }
+        // }
+
+        //Health Worker Selected
+        var healthWorkerSelected = function(){
+            var val = jq(this).val();
+            if(val == 1065){
+                jq('#tr-needle-stick').show();
+            }else{
+                jq('#tr-needle-stick').hide();
+                clearHiddenSections(jq('#needle-stick'));
+            }
+        }
+        //PWID selected
+        var pwidSelected = function(){
+            var val = jq(this).val();
+            var pwidChecked = jq("#pwid input:checkbox:checked");
+            if(val == 105 &amp;&amp; pwidChecked.length >=1){
+                jq('#tr-needle-shared').show();
+            }else{
+                jq('#tr-needle-shared').hide();
+                clearHiddenSections(jq('#needle-shared'));
+            }
+        }
+
+        // Recommended For HTS Test Selected
+        var recommendedForTestSelected = function(){
+            var val = jq(this).val();
+            var tableTesting = jq('#tb-testing-reasons');
+            var tableNotTesting = jq('#tb-not-testing-reasons');
+
+            if(val == 1066){
+                jq('#tr-testing-reasons').hide();
+                clearHiddenSections(tableTesting);
+                jq('#supported-reason').show();
+                jq('#tr-not-testing-reasons').show();
+            } else if(val == 1065){
+                jq('#tr-not-testing-reasons').hide();
+                clearHiddenSections(tableNotTesting);
+                jq('#supported-reason').show();
+                jq('#tr-testing-reasons').show();
+            }
+        }
+
+        //ReferredSelected for HTS Test selected
+        var referredSelected = function(){
+            var val = jq(this).val();
+
+            if(val == 1066){
+                jq('#tr-reasons-not-refered').show();
+            }else{
+                jq('#tr-reasons-not-refered').hide();
+                clearHiddenSections(jq('#other-decline-reason'));
+                clearHiddenSections(jq('#decline-testing'));
+                clearHiddenSections(jq('#wants-partner'));
+                clearHiddenSections(jq('#stigma'));
+                clearHiddenSections(jq('#violent-partner'));
+                clearHiddenSections(jq('#lack-counsellor'));
+                clearHiddenSections(jq('#heavy-workload'));
+                clearHiddenSections(jq('#too-sick'));
+                clearHiddenSections(jq('#other-reason-specify'));
+            }
+        }
+
+        //Other Priority Population Selected
+        var otherPriorityPopulationSelected = function(){
+            var val = jq(this).val();
+            var otherChecked = jq("#other-priority-population input:checkbox:checked");
+            if(val == 5622 &amp;&amp; otherChecked.length >=1){
+                jq('#tbl-other-priority-population').show();
+            } else {
+                jq('#tbl-other-priority-population').hide();
+                clearHiddenSections(jq('#other-priority-population'));
+            }
+        }
+
+        //Other Decline Reason Selected
+        var otherDeclineReasonSelected = function(){
+            var val = jq(this).val();
+            var otherChecked = jq("#other-decline-reason input:checkbox:checked");
+            if(val == 5622 &amp;&amp; otherChecked.length >=1){
+                jq('#tbl-other-decline-reason').show();
+            }else{
+                jq('#tbl-other-decline-reason').hide();
+                clearHiddenSections(jq('#other-reason-specify'));
+            }
+        }
+
+        var indexRelationshipSelected = function(){
+            var val = jq(this).val();
+            var relationshipChecked = jq("#index-relationship input:checkbox:checked");
+            if(val == 1107 &amp;&amp; relationshipChecked.length ==1){
+                jq("#index-relationship input[type=checkbox]").prop("disabled",true);
+                jq(this).prop("disabled",false);
+            }else {
+                jq("#index-relationship input[type=checkbox]").prop("disabled",false);
+                jq("#index-relationship input[value=1107]").prop("disabled",true);
+            }
+            if(relationshipChecked.length ==0){
+                jq("#index-relationship input[value=1107]").prop("disabled",false);
+            }
+        }
+
+        var tbScreenedSelected = function(){
+            var val = jq(this).val();
+            if(val == 1065){
+                jq('#screening-questions').show();
+            }else {
+                jq('#screening-questions').hide();
+            }
+        }
+
+        // handle ML prediction button
+        function hivPrediction() {
+            var ctxPath = typeof openmrsContextPath === 'string' ? openmrsContextPath : OPENMRS_CONTEXT_PATH;
+            var casefindingURL = "<lookup expression="fn.globalProperty('kenyaemrml.casefinding.endpoint')"/>";
+            var glbLowRiskThreshold = "<lookup expression="fn.globalProperty('kenyaemrml.hts.lowRiskThreshold')"/>";
+            var glbMediumRiskThreshold = "<lookup expression="fn.globalProperty('kenyaemrml.hts.mediumRiskThreshold')"/>";
+            var glbHighRiskThreshold = "<lookup expression="fn.globalProperty('kenyaemrml.hts.highRiskThreshold')"/>";
+            // var latestMaritalStatus = "<lookup expression="fn.latestObs(1054).getValueCoded()"/>";
+            var latestMaritalStatus = "<lookup expression="fn.latestObs(1054).valueCoded"/>";
+            latestMaritalStatus = latestMaritalStatus.replace(/\D/g,'');
+            var monthsSinceLastTest = getValue('date-tested.value');
+            var populationType = getValue('population-type.value');
+            var isDisabled = getValue('has-disability.value');
+            var everTested = getValue("ever-tested.value");
+            var testedAs = getValue("couple-testing.value");
+            var htsDepartment = getValue("department.value");
+            var testStrategy = getValue("strategy.value");
+            var tbScreening = getValue("tb-result-status.value");
+            var selfTested = getValue("tester.value");
+            var monthsSinceLastTestInt = parseInt(monthsSinceLastTest);
+            var pAge = parseInt('<lookup expression="patient.age"/>');
+
+            // key population
+            // var pwidChecked = jq("#pwid input:checkbox:checked");
+            // var mwsmChecked = jq("#kpmsm input:checkbox:checked");
+            // var fswChecked = jq("#female-sex-worker input:checkbox:checked");
+            // var kpPrisonerChecked = jq("#prisoner input:checkbox:checked");
+            // var transgenderChecked = jq("#transgender input:checkbox:checked");
+            // var kpotherChecked = jq("#kpother input:checkbox:checked");
+            var keyPopulationVal = getValue("chooseKeyPop.value");
+
+            // priority population
+            // var fisherFolkChecked = jq("#fisherfolk input:checkbox:checked");
+            // var truckDriverChecked = jq("#truckdriver input:checkbox:checked");
+            // var adygChecked = jq("#adyg input:checkbox:checked");
+            // var ppPrisonerChecked = jq("#ppprisoner input:checkbox:checked");
+            // var dodOnlyChecked = jq("#dodOnly input:checkbox:checked");
+            var priPopulationVal = getValue("choosePriPop.value");
+
+            var onPREP = getValue("currently-prep.value");
+            var hasSTI = getValue("currently-sti.value");
+            var activeSexually = getValue("active-sexually.value");
+            var newPartner = getValue("new-partner.value");
+            var isHealthWorker = getValue("health-worker.value");
+            var partnerHIVStatus = getValue("partner-hiv-status.value");
+            var numberOfPartners = getValue("no-sex-partners.value");
+            var numberOfPartnersInt = parseInt(numberOfPartners);
+            var alcoholicSex = getValue("alcoholic-sex.value");
+            var moneySex = getValue("money-sex.value");
+            var condomBurst = getValue("condom-burst.value");
+            var strangerSex = getValue("stranger-sex.value");
+            var positiveSex = getValue("known-positive.value");
+            var GBVExperienced = getValue("experienced-gbv.value");
+            var GBVSexualChecked = jq("#sexual-violence input:checkbox:checked");
+            var GBVPhysicalChecked = jq("#physical-violence input:checkbox:checked");
+            var GBVEmotionalChecked = jq("#emotional-violence input:checkbox:checked");
+            var sexualContactChecked = jq("#sexual-contact input:checkbox:checked");
+            var socialContactChecked = jq("#social-contact input:checkbox:checked");
+            var needleSharingContactChecked = jq("#needle-sharing-contact input:checkbox:checked");
+            var noneContactChecked = jq("#index-error input:checkbox:checked");
+            var needleStickInjuries = getValue("needle-stick.value");
+            var traditionalProcedures = getValue("scarification.value");
+            var discordantCouple = getValue("couple-discordant.value");
+            var patientPregnant = getValue('pregnant.value');
+            var mothersStatus = getValue('mothers-hiv-status.value');
+            var patientReferred = getValue('referred.value');
+            var patientBreastFeeding = getValue('breastfeeding.value');
+            var sharedNeedle = getValue('needle-shared.value');
+            var testHistory = getValue('test-history.value');
+            var htsEntryPoint = getValue('hts-entry-point.value');
+            var prepServiceChecked = jq("#prep-service input:checkbox:checked");
+            var pepServiceChecked = jq("#pep-service input:checkbox:checked");
+            var tbServiceChecked = jq("#tb-service input:checkbox:checked");
+            var stiServiceChecked = jq("#sti-service input:checkbox:checked");
+
+            //Validate mandatory fields
+            // test strategy (Index/HP)
+            // Population type / key population / priority population
+            // client self-tested
+            // entry point / department
+            // ever tested for HIV / months since last test
+
+            //if (populationType == '' || testHistory == '' || htsDepartment == '' || testStrategy == '' || htsEntryPoint == '') {
+            if(validateVariables() == false) {
+                jq('#ml-prediction-desc').html('Please ensure that you have provided answers to all questions above');
+                return;
+            }
+
+            var predictionVariables = {
+                Age: pAge,
+                births: 0,
+                pregnancies: 0,
+                literacy: 0,
+                poverty: 0,
+                anc: 0,
+                pnc: 0,
+                sba: 0,
+                hiv_prev: 0,
+                hiv_count: 0,
+                condom: 0,
+                intercourse: 0,
+                in_union: 0,
+                circumcision: 0,
+                partner_away: 0,
+                partner_men: 0,
+                partner_women: 0,
+                sti: 0,
+                fb: 0,
+                PopulationTypeGP: 0,
+                PopulationTypeKP: 0,
+                PopulationTypePRIORITY: 0,
+                KeyPopulationFSW: 0,
+                KeyPopulationMSM: 0,
+                KeyPopulationNR: 0,
+                KeyPopulationOther: 0,
+                KeyPopulationPWID: 0,
+                PriorityPopulationAGYW: 0,
+                PriorityPopulationFISHERMEN: 0,
+                PriorityPopulationNR: 0,
+                PriorityPopulationOTHER: 0,
+                DepartmentEMERGENCY: 0,
+                DepartmentIPD: 0,
+                DepartmentOPD: 0,
+                DepartmentPMTCT: 0,
+                DepartmentVCT: 0,
+                IsHealthWorkerNO: 0,
+                IsHealthWorkerNR: 0,
+                IsHealthWorkerYES: 0,
+                SexuallyActiveNO: 0,
+                SexuallyActiveNR: 0,
+                SexuallyActiveYES: 0,
+                NewPartnerNO: 0,
+                NewPartnerNR: 0,
+                NewPartnerYES: 0,
+                PartnerHIVStatusNEGATIVE: 0,
+                PartnerHIVStatusNR: 0,
+                PartnerHIVStatusPOSITIVE: 0,
+                PartnerHIVStatusUNKNOWN: 0,
+                NumberOfPartnersMULTIPLE: 0,
+                NumberOfPartnersNR: 0,
+                NumberOfPartnersSINGLE: 0,
+                AlcoholSexALWAYS: 0,
+                AlcoholSexNEVER: 0,
+                AlcoholSexNR: 0,
+                AlcoholSexSOMETIMES: 0,
+                MoneySexNO: 0,
+                MoneySexNR: 0,
+                MoneySexYES: 0,
+                CondomBurstNO: 0,
+                CondomBurstNR: 0,
+                CondomBurstYES: 0,
+                UnknownStatusPartnerNO: 0,
+                UnknownStatusPartnerNR: 0,
+                UnknownStatusPartnerYES: 0,
+                KnownStatusPartnerNO: 0,
+                KnownStatusPartnerNR: 0,
+                KnownStatusPartnerYES: 0,
+                PregnantNO: 0,
+                PregnantNR: 0,
+                PregnantYES: 0,
+                BreastfeedingMotherNO: 0,
+                BreastfeedingMotherNR: 0,
+                BreastfeedingMotherYES: 0,
+                ExperiencedGBVNO: 0,
+                ExperiencedGBVYES: 0,
+                CurrentlyOnPrepNO: 0,
+                CurrentlyOnPrepNR: 0,
+                CurrentlyOnPrepYES: 0,
+                CurrentlyHasSTINO: 0,
+                CurrentlyHasSTINR: 0,
+                CurrentlyHasSTIYES: 0,
+                SharedNeedleNO: 0,
+                SharedNeedleNR: 0,
+                SharedNeedleYES: 0,
+                NeedleStickInjuriesNO: 0,
+                NeedleStickInjuriesNR: 0,
+                NeedleStickInjuriesYES: 0,
+                TraditionalProceduresNO: 0,
+                TraditionalProceduresNR: 0,
+                TraditionalProceduresYES: 0,
+                MothersStatusNEGATIVE: 0,
+                MothersStatusNR: 0,
+                MothersStatusPOSITIVE: 0,
+                MothersStatusUNKNOWN: 0,
+                ReferredForTestingNO: 0,
+                ReferredForTestingYES: 0,
+                GenderFEMALE: pgender == 'F' ? 1 : 0,
+                GenderMALE: pgender == 'M' ? 1 : 0,
+                MaritalStatusDIVORCED: 0,
+                MaritalStatusMARRIED: 0,
+                MaritalStatusMINOR: 0,
+                MaritalStatusPOLYGAMOUS: 0,
+                MaritalStatusSINGLE: 0,
+                EverTestedForHivNO: 0,
+                EverTestedForHivYES: 0,
+                MonthsSinceLastTestLASTSIXMONTHS: 0,
+                MonthsSinceLastTestMORETHANTWOYEARS: 0,
+                MonthsSinceLastTestNR: 0,
+                MonthsSinceLastTestONETOTWOYEARS: 0,
+                MonthsSinceLastTestSEVENTOTWELVE: 0,
+                ClientTestedAsCOUPLE: 0,
+                ClientTestedAsINDIVIDUAL: 0,
+                EntryPointIPD: 0,
+                EntryPointOPD: 0,
+                EntryPointOTHER: 0,
+                EntryPointPEDIATRIC: 0,
+                EntryPointPMTCT_ANC: 0,
+                EntryPointPMTCT_MAT_PNC: 0,
+                EntryPointTB: 0,
+                EntryPointVCT: 0,
+                EntryPointVMMC: 0,
+                TestStrategyHB: 0,
+                TestStrategyHP: 0,
+                TestStrategyINDEX: 0,
+                TestStrategyMO: 0,
+                TestStrategyNP: 0,
+                TestStrategyOTHER: 0,
+                TestStrategySNS: 0,
+                TestStrategyVI: 0,
+                TestStrategyVS: 0,
+                TbScreeningCONFIRMEDTB: 0,
+                TbScreeningNOPRESUMEDTB: 0,
+                TbScreeningPRESUMEDTB: 0,
+                ClientSelfTestedNO: 0,
+                ClientSelfTestedYES: 0,
+                CoupleDiscordantNO: 0,
+                CoupleDiscordantNR: 0,
+                CoupleDiscordantYES: 0,
+                SEXUALNO: 0,
+                SEXUALYES: 0,
+                SOCIALNO: 0,
+                SOCIALYES: 0,
+                NONENO: 0,
+                NONEYES: 0,
+                NEEDLE_SHARINGNO: 0,
+                NEEDLE_SHARINGYES: 0,
+                ReceivedPrEPNO: 0,
+                ReceivedPrEPYES: 0,
+                ReceivedPEPNO: 0,
+                ReceivedPEPYES: 0,
+                ReceivedTBNO: 0,
+                ReceivedTBYES: 0,
+                ReceivedSTINO: 0,
+                ReceivedSTIYES: 0,
+                GBVSexualNO: 0,
+                GBVSexualYES: 0,
+                GBVPhysicalNO: 0,
+                GBVPhysicalYES: 0,
+                GBVEmotionalNO: 0,
+                GBVEmotionalYES: 0,
+                dayofweekFRIDAY: 0,
+                dayofweekMONDAY: 0,
+                dayofweekSATURDAY: 0,
+                dayofweekSUNDAY: 0,
+                dayofweekTHURSDAY: 0,
+                dayofweekTUESDAY: 0,
+                dayofweekWEDNESDAY: 0
+            };
+
+            // convert marital status
+            if (latestMaritalStatus == 5555) { // married monogamous
+                predictionVariables.MaritalStatusMARRIED = 1;
+            } else if (latestMaritalStatus == 159715) { // married polygamous
+                predictionVariables.MaritalStatusPOLYGAMOUS = 1;
+            } else if (latestMaritalStatus == 1058) { // divorced
+                predictionVariables.MaritalStatusDIVORCED = 1;
+            } else if (latestMaritalStatus == 1059 || latestMaritalStatus == 1057) { // widowed=single
+                predictionVariables.MaritalStatusSINGLE = 1;
+            }
+
+            if (pAge &lt; 15) {
+                predictionVariables.MaritalStatusMINOR = 1;
+            }
+
+            // convert population type
+            if (populationType == 164928) {
+                predictionVariables.PopulationTypeGP = 1;
+            } else if (populationType == 164929) {
+                predictionVariables.PopulationTypeKP = 1;
+            } else if (populationType == 138643) {
+                predictionVariables.PopulationTypePRIORITY = 1;
+            }
+
+            //Key Population
+            
+            if (keyPopulationVal == 105) { //INJECT DRUGS
+            	predictionVariables.KeyPopulationPWID = 1;
+            } else if (keyPopulationVal == 160578) { // MEN WITH MEN
+            	predictionVariables.KeyPopulationMSM = 1;
+            } else if (keyPopulationVal == 160579) { // FEMALE SEX WORKER
+            	predictionVariables.KeyPopulationFSW = 1;
+            } else if (keyPopulationVal == 5622 || keyPopulationVal == 162277 || keyPopulationVal == 165100) { // Other|PRISONER|TRANS
+            	predictionVariables.KeyPopulationOther = 1;
+            } else { // Not relevant
+                predictionVariables.KeyPopulationNR = 1;
+            }
+
+            //Priority Population
+
+            if (priPopulationVal == 159674) { //FISHER
+            	predictionVariables.PriorityPopulationFISHERMEN = 1;
+            } else if (priPopulationVal == 160549) { //ADOLESCENT
+            	predictionVariables.PriorityPopulationAGYW = 1;
+            } else if (priPopulationVal == 165192 || priPopulationVal == 162277 || priPopulationVal == 162198) { //MILITARY|PRISONER|TRUCK
+            	predictionVariables.PriorityPopulationOTHER = 1;
+            } else { // Not relevant
+                predictionVariables.PriorityPopulationNR = 1;
+            }
+
+            // convert ever tested (testHistory) for hiv status
+            if (testHistory == 1065) {
+                predictionVariables.EverTestedForHivYES = 1;
+            } else if (testHistory == 1066) {
+                predictionVariables.EverTestedForHivNO = 1;
+            }
+
+            // converter for tested as i.e. individual, couple:
+            // TO-DO check field
+            if (testedAs == 164957) {
+                predictionVariables.ClientTestedAsINDIVIDUAL = 1;
+            } else if (testedAs == 164958) {
+                predictionVariables.ClientTestedAsCOUPLE = 1;
+            }
+
+            // convert entry point
+            
+            if (htsEntryPoint == 159940) { // VCT
+                predictionVariables.EntryPointVCT = 1;
+            } else if (htsEntryPoint == 160542) { // OPD
+                predictionVariables.EntryPointOPD = 1;
+            } else if (htsEntryPoint == 160456 || htsEntryPoint == 1623) { // Maternity
+                predictionVariables.EntryPointPMTCT_MAT_PNC = 1;
+            } else if (htsEntryPoint == 5485) { // IPD
+                predictionVariables.EntryPointIPD = 1;
+            } else if (htsEntryPoint == 162181) { // Paed
+                predictionVariables.EntryPointPEDIATRIC = 1;
+            } else if (htsEntryPoint == 5622 || htsEntryPoint == 160552 || htsEntryPoint == 162050 || htsEntryPoint == 159938 || htsEntryPoint == 159939 || htsEntryPoint == 160546 || htsEntryPoint == 160522 || htsEntryPoint == 163096) { // Other
+                predictionVariables.EntryPointOTHER = 1;
+            } else if (htsEntryPoint == 162223) { // vmmc
+                predictionVariables.EntryPointVMMC = 1;
+            } else if (htsEntryPoint == 160541) { // tb
+                predictionVariables.EntryPointTB = 1;
+            } else if (htsEntryPoint == 160538) { // ANC
+                predictionVariables.EntryPointPMTCT_ANC = 1;
+            }
+
+            // convert department
+            
+            if (htsDepartment == 159940) { // VCT
+                predictionVariables.DepartmentVCT = 1;
+            } else if (htsDepartment == 160542) { // OPD
+                predictionVariables.DepartmentOPD = 1;
+            } else if (htsDepartment == 160456 || htsDepartment == 1623) { // Maternity
+                predictionVariables.DepartmentPMTCT = 1;
+            } else if (htsDepartment == 5485) { // IPD
+                predictionVariables.DepartmentIPD = 1;
+            } else if (htsDepartment == 160473) { // EMERGENCY
+                predictionVariables.DepartmentEMERGENCY = 1;
+            }
+
+            // convert months since last test
+
+            if(monthsSinceLastTestInt &gt; 0) {
+                if(monthsSinceLastTestInt &lt;= 6) {
+                    predictionVariables.MonthsSinceLastTestLASTSIXMONTHS = 1;
+                } else if(monthsSinceLastTestInt &gt;= 24) {
+                    predictionVariables.MonthsSinceLastTestMORETHANTWOYEARS = 1;
+                } else if(monthsSinceLastTestInt &gt;= 7 &amp;&amp; monthsSinceLastTestInt &lt;= 12) {
+                    predictionVariables.MonthsSinceLastTestSEVENTOTWELVE = 1;
+                } else if(monthsSinceLastTestInt &gt;= 12 &amp;&amp; monthsSinceLastTestInt &lt;= 24) {
+                    predictionVariables.MonthsSinceLastTestONETOTWOYEARS = 1;
+                }
+            } else {
+                predictionVariables.MonthsSinceLastTestNR = 1;
+            }
+
+            // convert testing strategy
+
+            if (testStrategy == 159938) { // HB
+                predictionVariables.TestStrategyHB = 1;
+            } else if (testStrategy == 159939) { // Mobile
+                predictionVariables.TestStrategyMO = 1;
+            } else if (testStrategy == 164163) { // HP
+                predictionVariables.TestStrategyHP = 1;
+            } else if (testStrategy == 164953) { // NP
+                predictionVariables.TestStrategyNP = 1;
+            } else if (testStrategy == 164954) { // Integrated VCT sites
+                predictionVariables.TestStrategyVI = 1;
+            } else if (testStrategy == 164955) { // Stand Alone VCT center
+                predictionVariables.TestStrategyVS = 1;
+            } else if (testStrategy == 161557) { // INDEX
+                predictionVariables.TestStrategyINDEX = 1;
+            } else if (testStrategy == 5622) { // OTHER
+                predictionVariables.TestStrategyOTHER = 1;
+            } else if (testStrategy == 166606) { // SNS
+                predictionVariables.TestStrategySNS = 1;
+            }
+
+            // convert HIV self test
+            
+            if (selfTested == 5619) {
+                predictionVariables.ClientSelfTestedNO = 1;
+            } else if (selfTested == 164952) {
+                predictionVariables.ClientSelfTestedYES = 1;
+            }
+
+            // convert TB screening
+
+            if (tbScreening == 1660 || tbScreening == 160737) {
+                predictionVariables.TbScreeningNOPRESUMEDTB = 1;
+            } else if (tbScreening == 142177 || tbScreening == 1111) {
+                predictionVariables.TbScreeningPRESUMEDTB = 1;
+            } else if (tbScreening == 1496 || tbScreening == 1662) {
+                predictionVariables.TbScreeningCONFIRMEDTB = 1;
+            }
+
+            // convert currently on PREP
+
+            if (onPREP == 1065) {
+                predictionVariables.CurrentlyOnPrepYES = 1;
+            } else if (onPREP == 1066) {
+                predictionVariables.CurrentlyOnPrepNO = 1;
+            }
+
+            // convert has STI
+
+            if (hasSTI == 1065) {
+                predictionVariables.CurrentlyHasSTIYES = 1;
+            } else if (hasSTI == 1066) {
+                predictionVariables.CurrentlyHasSTINO = 1;
+            }
+
+            // convert Sexually Active
+
+            if (activeSexually == 1065) {
+                predictionVariables.SexuallyActiveYES = 1;
+            } else if (activeSexually == 1066) {
+                predictionVariables.SexuallyActiveNO = 1;
+            } else {
+                predictionVariables.SexuallyActiveNR = 1;
+            }
+
+            // convert New Partner
+
+            if (newPartner == 1065) {
+                predictionVariables.NewPartnerYES = 1;
+            } else if (newPartner == 1066) {
+                predictionVariables.NewPartnerNO = 1;
+            } else {
+                predictionVariables.NewPartnerNR = 1;
+            }
+
+            // convert Health Worker
+
+            if (isHealthWorker == 1065) {
+                predictionVariables.IsHealthWorkerYES = 1;
+            } else if (isHealthWorker == 1066) {
+                predictionVariables.IsHealthWorkerNO = 1;
+            } else {
+                predictionVariables.IsHealthWorkerNR = 1;
+            }
+
+            // Partner HIV Status
+            
+            if (partnerHIVStatus == 703) {
+                predictionVariables.PartnerHIVStatusPOSITIVE = 1;
+            } else if (partnerHIVStatus == 664) {
+                predictionVariables.PartnerHIVStatusNEGATIVE = 1;
+            } else if (partnerHIVStatus == 1067) {
+                predictionVariables.PartnerHIVStatusUNKNOWN = 1;
+            } else {
+                predictionVariables.PartnerHIVStatusNR = 1;
+            }
+
+            // Number of Partners
+            
+            if(numberOfPartnersInt &gt; 0) {
+                if(numberOfPartnersInt &gt; 1) {
+                    predictionVariables.NumberOfPartnersMULTIPLE = 1;
+                } else if(numberOfPartnersInt == 1) {
+                    predictionVariables.NumberOfPartnersSINGLE = 1;
+                }
+            } else {
+                predictionVariables.NumberOfPartnersNR = 1;
+            }
+
+            // Alcoholic Sex
+
+            if (alcoholicSex == 1066) {
+                predictionVariables.AlcoholSexNEVER = 1;
+            } else if (alcoholicSex == 1385) {
+                predictionVariables.AlcoholSexSOMETIMES = 1;
+            } else if (alcoholicSex == 165027) {
+                predictionVariables.AlcoholSexALWAYS = 1;
+            } else {
+                predictionVariables.AlcoholSexNR = 1;
+            }
+
+            // Money Sex
+
+            if (moneySex == 1065) {
+                predictionVariables.MoneySexYES = 1;
+            } else if (moneySex == 1066) {
+                predictionVariables.MoneySexNO = 1;
+            } else {
+                predictionVariables.MoneySexNR = 1;
+            }
+
+            //condom burst
+            
+            if (condomBurst == 1065) {
+                predictionVariables.CondomBurstYES = 1;
+            } else if (condomBurst == 1066) {
+                predictionVariables.CondomBurstNO = 1;
+            } else {
+                predictionVariables.CondomBurstNR = 1;
+            }
+
+            // unknown status partner
+            
+            if (strangerSex == 1065) {
+                predictionVariables.UnknownStatusPartnerYES = 1;
+            } else if (strangerSex == 1066) {
+                predictionVariables.UnknownStatusPartnerNO = 1;
+            } else {
+                predictionVariables.UnknownStatusPartnerNR = 1;
+            }
+
+            //known status partner
+            
+            if (positiveSex == 1065) {
+                predictionVariables.KnownStatusPartnerYES = 1;
+            } else if (positiveSex == 1066) {
+                predictionVariables.KnownStatusPartnerNO = 1;
+            } else {
+                predictionVariables.KnownStatusPartnerNR = 1;
+            }
+
+            //pregnant
+            
+            if (patientPregnant == 1065) {
+                predictionVariables.PregnantYES = 1;
+            } else if (patientPregnant == 1066) {
+                predictionVariables.PregnantNO = 1;
+            } else {
+                predictionVariables.PregnantNR = 1;
+            }
+
+            //breastfeeding
+            
+            if (patientBreastFeeding == 1065) {
+                predictionVariables.BreastfeedingMotherYES = 1;
+            } else if (patientBreastFeeding == 1066) {
+                predictionVariables.BreastfeedingMotherNO = 1;
+            } else {
+                predictionVariables.BreastfeedingMotherNR = 1;
+            }
+
+            // GBV experienced
+            
+            if (GBVExperienced == 1065) {
+                predictionVariables.ExperiencedGBVYES = 1;
+            } else if (GBVExperienced == 1066) {
+                predictionVariables.ExperiencedGBVNO = 1;
+            }
+
+            //shared needle
+            
+            if (sharedNeedle == 1065) {
+                predictionVariables.SharedNeedleYES = 1;
+            } else if (sharedNeedle == 1066) {
+                predictionVariables.SharedNeedleNO = 1;
+            } else {
+                predictionVariables.SharedNeedleNR = 1;
+            }
+
+            //needle stick injuries
+            
+            if (needleStickInjuries == 153574) {
+                predictionVariables.NeedleStickInjuriesYES = 1;
+            } else if (needleStickInjuries == 1066) {
+                predictionVariables.NeedleStickInjuriesNO = 1;
+            } else {
+                predictionVariables.NeedleStickInjuriesNR = 1;
+            }
+
+            //traditional procedures
+            
+            if (traditionalProcedures == 1065) {
+                predictionVariables.TraditionalProceduresYES = 1;
+            } else if (traditionalProcedures == 1066) {
+                predictionVariables.TraditionalProceduresNO = 1;
+            } else {
+                predictionVariables.TraditionalProceduresNR = 1;
+            }
+
+            //mothers status
+            
+            if (mothersStatus == 703) {
+                predictionVariables.MothersStatusPOSITIVE = 1;
+            } else if (mothersStatus == 664) {
+                predictionVariables.MothersStatusNEGATIVE = 1;
+            } else if (mothersStatus == 1067) {
+                predictionVariables.MothersStatusUNKNOWN = 1;
+            } else {
+                predictionVariables.MothersStatusNR = 1;
+            }
+
+            //referred for testing
+            
+            if (patientReferred == 1065) {
+                predictionVariables.ReferredForTestingYES = 1;
+            } else if (patientReferred == 1066) {
+                predictionVariables.ReferredForTestingNO = 1;
+            }
+
+            // Discordant Couple
+            
+            if (discordantCouple == 1065) {
+                predictionVariables.CoupleDiscordantYES = 1;
+            } else if (discordantCouple == 1066) {
+                predictionVariables.CoupleDiscordantNO = 1;
+            } else {
+                predictionVariables.CoupleDiscordantNR = 1;
+            }
+
+            // Relationship with Contact - Sexual
+            
+            if (sexualContactChecked.length &gt;= 1) {
+                predictionVariables.SEXUALYES = 1;
+            } else {
+                predictionVariables.SEXUALNO = 1;
+            }
+
+            // Relationship with Contact - Social
+            
+            if (socialContactChecked.length &gt;= 1) {
+                predictionVariables.SOCIALYES = 1;
+            } else {
+                predictionVariables.SOCIALNO = 1;
+            }
+
+            // Relationship with Contact - None
+            
+            if (noneContactChecked.length &gt;= 1) {
+                predictionVariables.NONEYES = 1;
+            } else {
+                predictionVariables.NONENO = 1;
+            }
+
+            // Relationship with Contact Needle sharing
+            
+            if (needleSharingContactChecked.length &gt;= 1) {
+                predictionVariables.NEEDLE_SHARINGYES = 1;
+            } else {
+                predictionVariables.NEEDLE_SHARINGNO = 1;
+            }
+
+            // Received Services - prep, pep, tb, sti
+            // received prep
+
+            if (prepServiceChecked.length &gt;= 1) {
+                predictionVariables.ReceivedPrEPYES = 1;
+            } else {
+                predictionVariables.ReceivedPrEPNO = 1;
+            }
+
+            // received pep
+
+            if (pepServiceChecked.length &gt;= 1) {
+                predictionVariables.ReceivedPEPYES = 1;
+            } else {
+                predictionVariables.ReceivedPEPNO = 1;
+            }
+
+            // received TB
+            
+            if (tbServiceChecked.length &gt;= 1) {
+                predictionVariables.ReceivedTBYES = 1;
+            } else {
+                predictionVariables.ReceivedTBNO = 1;
+            }
+
+            // received STI
+            
+            if (stiServiceChecked.length &gt;= 1) {
+                predictionVariables.ReceivedSTIYES = 1;
+            } else {
+                predictionVariables.ReceivedSTINO = 1;
+            }
+
+            // GBV Sexual
+            
+            if (GBVSexualChecked.length &gt;= 1) {
+                predictionVariables.GBVSexualYES = 1;
+            } else {
+                predictionVariables.GBVSexualNO = 1;
+            }
+
+            // GBV Physical
+            
+            if (GBVPhysicalChecked.length &gt;= 1) {
+                predictionVariables.GBVPhysicalYES = 1;
+            } else {
+                predictionVariables.GBVPhysicalNO = 1;
+            }
+
+            // GBV Emotional
+            
+            if (GBVEmotionalChecked.length &gt;= 1) {
+                predictionVariables.GBVEmotionalYES = 1;
+            } else {
+                predictionVariables.GBVEmotionalNO = 1;
+            }
+
+            // Day of week
+            
+            const currentDate = new Date();
+            let dayOfWeek = currentDate.getDay();
+            if(dayOfWeek == 0) { // Sunday
+                predictionVariables.dayofweekSUNDAY = 1;
+            } else if(dayOfWeek == 1) { // Monday
+                predictionVariables.dayofweekMONDAY = 1;
+            } else if(dayOfWeek == 2) { // Tuesday
+                predictionVariables.dayofweekTUESDAY = 1;
+            } else if(dayOfWeek == 3) { // Wednesday
+                predictionVariables.dayofweekWEDNESDAY = 1;
+            } else if(dayOfWeek == 4) { // Thursday
+                predictionVariables.dayofweekTHURSDAY = 1;
+            } else if(dayOfWeek == 5) { // Friday
+                predictionVariables.dayofweekFRIDAY = 1;
+            } else if(dayOfWeek == 6) { // Saturday
+                predictionVariables.dayofweekSATURDAY = 1;
+            }
+
+            var mlFormattedDate = moment(new Date()).format('YYYY-MM-DD');
+            var modelConfigs = {
+                "modelId":"hts_xgb_1211_jan_2023",
+                "encounterDate":mlFormattedDate,
+                "facilityId":"",
+                "debug": "true"
+            }
+            var mlScoringRequestPayload = {
+                modelConfigs: modelConfigs,
+                variableValues: predictionVariables
+            }
+
+            console.log("ML Payload: " + JSON.stringify(mlScoringRequestPayload));
+
+            var predResponse = '';
+            if (casefindingURL !='') {
+                jq.ajax({
+                    url: '/' + ctxPath + casefindingURL,
+                    type: "POST",
+                    contentType: 'application/json',
+                    data: JSON.stringify(mlScoringRequestPayload),
+                    async: false,
+                    success: function (response, textStatus, jqXHR) {
+                        var probabilityForPositivity = response.result.predictions["probability(1)"];
+                        
+                        var lowRiskThreshold = glbLowRiskThreshold;
+                        var mediumRiskThreshold = glbMediumRiskThreshold;
+                        var highRiskThreshold = glbHighRiskThreshold;
+
+                        var highestRiskConcept = 167164;
+                        var highRiskConcept = 1408;
+                        var mediumRiskConcept = 1499;
+                        var lowRiskConcept = 1407;
+
+                        setValue('algorithm_result_score.value', probabilityForPositivity);
+
+                        var className = jq('#ml-prediction-risk-category').attr("class");
+                        if (probabilityForPositivity &gt; highRiskThreshold) {
+                            jq('#ml-prediction-risk-category').html('Highest Risk Client');
+                            jq('#ml-prediction-risk-category').removeClass(className);
+                            jq('#ml-prediction-risk-category').addClass('ke-ml-very-high-risk');
+                            jq('#ml-prediction-desc').html('This client has a very high probability of a HIV positive test result. Testing is strongly recommended');
+                            setValue('algorithm_result_category.value', highestRiskConcept);
+                        } else if (probabilityForPositivity &lt;= highRiskThreshold &amp;&amp; probabilityForPositivity &gt; mediumRiskThreshold) {
+                            jq('#ml-prediction-risk-category').html('High Risk Client');
+                            jq('#ml-prediction-risk-category').removeClass(className);
+                            jq('#ml-prediction-risk-category').addClass('ke-ml-very-high-risk');
+                            jq('#ml-prediction-desc').html('This client has a high probability of a HIV positive test result. Testing is strongly recommended');
+                            setValue('algorithm_result_category.value', highRiskConcept);
+                        } else if (probabilityForPositivity &lt;= mediumRiskThreshold &amp;&amp; probabilityForPositivity &gt; lowRiskThreshold ) {
+                            jq('#ml-prediction-risk-category').html('Medium Risk Client');
+                            jq('#ml-prediction-risk-category').removeClass(className);
+                            jq('#ml-prediction-risk-category').addClass('ke-ml-medium-risk');
+                            jq('#ml-prediction-desc').html('This client has a medium probability of a HIV positive test result. Testing is recommended');
+                            setValue('algorithm_result_category.value', mediumRiskConcept);
+                        } else if(probabilityForPositivity &lt;= lowRiskThreshold) {
+                            jq('#ml-prediction-risk-category').html('Low Risk Client');
+                            jq('#ml-prediction-risk-category').removeClass(className);
+                            jq('#ml-prediction-risk-category').addClass('ke-ml-low-risk');
+                            jq('#ml-prediction-desc').html('This client has a low probability of a HIV positive test result. Testing may not be recommended');
+                            setValue('algorithm_result_category.value', lowRiskConcept);
+                        }
+                    },
+                    error: function (jqXHR, textStatus, errorThrown) {
+                        var msg = '';
+                        if (jqXHR.status == 500) {
+                            msg = 'There was an internal Server Error [500].';
+                        } else if (jqXHR.status == 404) {
+                            msg = 'The requested service not found. [404]';
+                        } else {
+                            msg = 'System error: ' + jqXHR.responseText;
+                        }
+                        
+                        jq('#ml-prediction-desc').html(msg);
+                    }
+                });
+            }
+
+        }
+
+        // Validate valiables
+        function validateVariables() {
+            var popType = getValue('population-type.value');
+            var department = getValue('department.value');
+            var patientType = getValue('patient-type.value');
+            var relationshipChecked = jq("#index-relationship input:checkbox:checked");
+            var otherPriorityPopulationChecked = jq("#other-priority-population input:checkbox:checked");
+            var otherPriorityPopulationSpecify = getValue('other-priority-population-specify.value');
+            var patientPregnant = getValue('pregnant.value');
+            var healthWorker = getValue('health-worker.value');
+            var needleStick = getValue('needle-stick.value');
+            var testHistory = getValue('test-history.value');
+            var mothersStatus = getValue('mothers-hiv-status.value');
+            var everHadSex = getValue('ever-had-sex.value');
+            var testStatus = getValue('ever-tested.value');
+            var experiencedGbv = getValue('experienced-gbv.value');
+            var scarification = getValue('scarification.value');
+            var eligibility = getValue('eligible-test.value');
+            var htsEntryPoint = getValue('hts-entry-point.value');
+            var testStrategy = getValue("strategy.value");
+            var eligibleForTest = getValue("eligible-test.value");
+            var predictionResultCategory = getValue("algorithm_result_category.value");
+            var predictionResultScore = getValue("algorithm_result_score.value");
+            var hasDisability = getValue('has-disability.value');
+            var disabilityChecked = jq("#disability input:checkbox:checked");
+
+            if (disabilityChecked.length == 0 &amp;&amp; hasDisability == 1065) {
+                getField('has-disability.error').html('Please specify the disabilty type.').show();
+                return false;
+            } else {
+                getField('has-disability.error').html('Please specify the disabilty type.').hide();
+            }
+
+            if(popType == false){
+                getField('population-type.error').html('Please specify client population type.').show();
+                return false;
+            } else {
+                getField('population-type.error').html('Please specify client population type.').hide();
+            }
+
+            // Validate Entry Point
+            if(htsEntryPoint == false){
+                getField('hts-entry-point.error').html('Please specify the entry point.').show();
+                return false;
+            } else {
+                getField('hts-entry-point.error').html('Please specify the entry point.').hide();
+            }
+
+            // Validate Test Strategy
+            if(testStrategy == false){
+                getField('strategy.error').html('Please specify the strategy.').show();
+                return false;
+            } else {
+                getField('strategy.error').html('Please specify the strategy.').hide();
+            }
+
+            if(department == false){
+                getField('department.error').html('Please specify department.').show();
+                return false;
+            } else {
+                getField('department.error').html('Please specify department.').hide();
+            }
+
+            if(patientType == false){
+                getField('patient-type.error').html('Please specify client patient type.').show();
+                return false;
+            } else {
+                getField('patient-type.error').html('Please specify client patient type.').hide();
+            }
+
+            if(pAge &gt; 17) {
+                if (healthWorker == false) {
+                    getField('health-worker.error').html('Please specify if client is a health worker.').show();
+                    return false;
+                } else {
+                    getField('health-worker.error').html('Please specify if client is a health worker.').hide();
+                }
+            }
+
+            if(relationshipChecked.length == 0){
+                getField('index-error.error').html('Please specify relationship to index.').show();
+                return false;
+            } else {
+                getField('index-error.error').html('Please specify relationship to index.').hide();
+            }
+
+            if(pgender == 'F' &amp;&amp; pAge &gt; 9 &amp;&amp; (testHistory == 1065 &amp;&amp; testStatus != 703)){
+                if(patientPregnant == false ){
+                    getField('pregnant.error').html('Please specify pregnancy status.').show();
+                    return false;
+                } else {
+                    getField('pregnant.error').html('Please specify pregnancy status.').hide();
+                }
+            }
+
+            if(pAge &lt; 10) {
+                if (mothersStatus == false) {
+                    getField('mothers-hiv-status.error').html("Please specify client mother's hiv status.").show();
+                    return false;
+                } else {
+                    getField('mothers-hiv-status.error').html("Please specify client mother's hiv status.").hide();
+                }
+            }
+
+            if(testHistory == false){
+                getField('test-history.error').html('Please specify if client has been tested for HIV before.').show();
+                return false;
+            } else {
+                getField('test-history.error').html('Please specify if client has been tested for HIV before.').hide();
+            }
+
+            if(pAge &lt; 10 &amp;&amp; mothersStatus != 703 &amp;&amp; testHistory == 1065 &amp;&amp;  testStatus != 703){
+                if (everHadSex == false) {
+                    getField('active-sexually.error').html('Please specify of client has ever been defiled.').show();
+                    return false;
+                } else {
+                    getField('active-sexually.error').html('Please specify of client has ever been defiled.').hide();
+                }
+            }
+
+            if(pAge &gt; 9  &amp;&amp; testHistory == 1065 &amp;&amp; testStatus != 703) {
+                if (everHadSex == false) {
+                    getField('active-sexually.error').html('Please specify of client has ever had sex.').show();
+                    return false;
+                } else {
+                    getField('active-sexually.error').html('Please specify of client has ever had sex.').hide();
+                }
+            }
+
+            if(pAge &gt; 9 &amp;&amp; (testHistory == 1065 &amp;&amp;  testStatus != 703)){
+                if(experiencedGbv == false){
+                    getField('experienced-gbv.error').html('Please specify if client has ever experienced gender based violence.').show();
+                    return false;
+                } else {
+                    getField('experienced-gbv.error').html('Please specify if client has ever experienced gender based violence.').hide();
+                }
+            }
+
+            if(pAge &lt; 10 &amp;&amp; mothersStatus != 703 &amp;&amp; testHistory == 1065 &amp;&amp;  testStatus != 703){
+                if (scarification == false) {
+                    getField('scarification.error').html('Please specify if client has ever had scarification, plastic tooth extraction, Circumcision, uvulectomy etc.').show();
+                    return false;
+                } else {
+                    getField('scarification.error').html('Please specify if client has ever had scarification, plastic tooth extraction, Circumcision, uvulectomy etc.').hide();
+                }
+            }
+
+            if(pAge &gt; 9 &amp;&amp; testHistory == 1065 &amp;&amp;  testStatus != 703) {
+                if (scarification == false) {
+                    getField('scarification.error').html('Please specify if client has ever had scarification, plastic tooth extraction, Circumcision, uvulectomy etc.').show();
+                    return false;
+                } else {
+                    getField('scarification.error').html('Please specify if client has ever had scarification, plastic tooth extraction, Circumcision, uvulectomy etc.').hide();
+                }
+            }
+
+            if((testHistory == 1065 &amp;&amp;  testStatus != 703) &amp;&amp;  (healthWorker == 1065 &amp;&amp; needleStick == false)){
+                getField('needle-stick.error').html('Please specify if client had needle stick injuries.').show();
+                return false;
+            } else {
+                getField('needle-stick.error').html('Please specify if client had needle stick injuries.').hide();
+            }
+            
+            if(eligibility == false){
+                getField('eligible-test.error').html('Please specify whether client is eligible for HIV test.').show();
+                return false;
+            } else {
+                getField('eligible-test.error').html('Please specify whether client is eligible for HIV test.').hide();
+            }
+
+            return true;
+        }
+
+        // Validate Prediction
+        function validatePrediction() {
+            var predictionResultCategory = getValue("algorithm_result_category.value");
+            var predictionResultScore = getValue("algorithm_result_score.value");
+
+            // Validate prediction
+            if(predictionResultCategory == false || predictionResultScore == false){
+                jq('#ml-prediction-desc').html('<span style="color:red;"><strong>Please predict the probability of HIV.</strong></span>');
+                return false;
+            }
+
+            return true;
+        }
+
+        // Validate everything before pushing
+        function validateForPush() {
+            var recommendForTest = getValue("recommended-test.value");
+            var reasonForTest = getValue("tb-testing-reasons.value");
+            var reasonForNoTest = getValue("tb-not-testing-reasons.value");
+            var referred = getValue('referred.value');
+
+            // Validate variables
+            if(!validateVariables()) {
+                return false;
+            }
+
+            // Validate prediction
+            if(!validatePrediction()) {
+                return false;
+            }
+
+            // Validate Recommended For Test
+            if(recommendForTest == false){
+                getField('recommended-test.error').html('Please specify if recommending testing.').show();
+                return false;
+            } else {
+                getField('recommended-test.error').html('Please specify if recommending testing.').hide();
+            }
+
+            // Validate Reasons For Test
+            if(recommendForTest == 1065 &amp;&amp; reasonForTest == false){
+                getField('tb-testing-reasons.error').html('Please specify reason for recommending testing.').show();
+                return false;
+            } else {
+                getField('tb-testing-reasons.error').html('Please specify reason for recommending testing.').hide();
+            }
+
+            // Validate Reasons For No Test
+            if(recommendForTest == 1066 &amp;&amp; reasonForNoTest == false){
+                getField('tb-not-testing-reasons.error').html('Please specify reason for NOT recommending testing.').show();
+                return false;
+            } else {
+                getField('tb-not-testing-reasons.error').html('Please specify reason for NOT recommending testing.').hide();
+            }
+
+            // Validate for referred
+            if(referred == false){
+                getField('referred.error').html('Please specify whether client was referred.').show();
+                return false;
+            } else {
+                getField('referred.error').html('Please specify whether client was referred.').hide();
+            }
+
+            return(true);
+        }
+
+        //Before Submit
+        beforeSubmit.push(validateForPush);
+
+        //Clear hidden sections
+        clearHiddenSections = function(parentObj) {
+            parentObj.find('input[type=radio]').each(function() {
+                this.checked = false;
+            });
+            parentObj.find('input[type=checkbox]').each(function() {
+                this.checked = false;
+            });
+            parentObj.find('input[type=text]').each(function() {
+                jq(this).val("");
+            });
+            parentObj.find('select').each(function() {
+                this.selectedIndex =0;
+            });
+        }
+
+    </script>
+    <ifMode mode="EDIT">
+        <script type="text/javascript">
+            jq(function(){
+
+                var populationType = getValue('population-type.value');
+                if (populationType == 164929 ){
+                    jq("#key-population").show();
+                    jq("#priority-population").hide();
+                }
+                if (populationType == 138643 ){
+                    jq("#priority-population").show();
+                    jq("#key-population").hide();
+                }
+                if(populationType == 164928){
+                    jq("#key-population").hide();
+                    jq("#priority-population").hide();
+                }
+
+                var testHistory = getValue('test-history.value');
+                if (testHistory == 1066 ){
+                    jq('#test-result').hide();
+                    jq('#tr-art-start-date').hide();
+                    jq('#positive-client').hide();
+                }
+                if (testHistory == 1065){
+                    jq('#eligible-for-test').show();
+                    jq('#test-result').show();
+                    jq('#tr-art-start-date').show();
+                }
+
+                var testStatus = getValue('ever-tested.value');
+                if (testStatus == 664 ){
+                    jq('#positive-client').hide();
+                }
+                if (testStatus == 703){
+                    jq('#positive-client').show();
+                }
+                if (testStatus == 1067){
+                    jq('#positive-client').hide();
+                }
+
+                var everHadSex = getValue('ever-had-sex.value');
+                if(everHadSex == 'true' &amp;&amp; pAge &gt; 10) {
+                    jq('#tr-sexually-active').show();
+                }  else{
+                    jq('#tr-sexually-active').hide();
+                }
+
+                var experiencedGbv = getValue('experienced-gbv.value');
+                if(experiencedGbv == 1065) {
+                    jq('#experienced-physical-violence').show();
+                    jq('#sex-againist-wish').show();
+                }  else{
+                    jq('#experienced-physical-violence').hide();
+                    jq('#sex-againist-wish').hide();
+                }
+
+                var healthWorker = getValue('health-worker.value');
+                if(healthWorker == 1065){
+                    jq('#tr-needle-stick').show();
+                }else{
+                    jq('#tr-needle-stick').hide();
+
+                }
+                var screenedForTb = getValue('screened-tb.value');
+                if(screenedForTb == 1065){
+                    jq('#screening-questions').show();
+                }else{
+                    jq('#screening-questions').hide();
+
+                }
+
+                var pwid = getValue('pwid.value');
+                var pwidChecked = jq("#pwid input:checkbox:checked");
+                if(pwid == 105 &amp;&amp; pwidChecked.length >=1){
+                    jq('#tr-needle-shared').show();
+                }else{
+                    jq('#tr-needle-shared').hide();
+                }
+
+                var recommendedToTest = getValue('recommended-test.value');
+                if(recommendedToTest == 1066){
+                    jq('#tr-testing-reasons').hide();
+                    jq('#supported-reason').show();
+                    jq('#tr-not-testing-reasons').show();
+                }else{
+                    jq('#tr-not-testing-reasons').hide();
+                    jq('#supported-reason').show();
+                    jq('#tr-testing-reasons').show();
+                }
+
+                var referredTo = getValue('referred.value');
+                if(referredTo == 1066){
+                    jq('#tr-reasons-not-refered').show();
+                }else{
+                    jq('#tr-reasons-not-refered').hide();
+                }
+
+                var otherReasons = getValue('other-decline-reason.value');
+                var otherChecked = jq("#other-decline-reason input:checkbox:checked");
+                if(otherReasons == 5622 &amp;&amp; otherChecked.length >=1){
+                    jq('#tbl-other-decline-reason').show();
+                }else{
+                    jq('#tbl-other-decline-reason').hide();
+                }
+
+                var prepChecked = jq("#prep-service input:checkbox:checked");
+                    if(prepChecked.length >=1){
+                        jq('#currently-prep input').prop('disabled', false);
+                    }else{
+                        jq("#currently-prep input[value=1065]").prop("checked", false);
+                        jq("#currently-prep input[value=1066]").prop("checked", false);
+                        jq('#currently-prep input').prop('disabled', true);
+                    }
+
+                    var pepChecked = jq("#pep-service input:checkbox:checked");
+                    if(pepChecked.length >=1){
+                        jq('#currently-pep input').prop('disabled', false);
+                    }else{
+                        jq("#currently-pep input[value=false]").prop("checked", false);
+                        jq("#currently-pep input[value=true]").prop("checked", false);
+                        jq('#currently-pep input').prop('disabled', true);
+                    }
+
+                //Sti selected
+                    var stiChecked = jq("#sti-service input:checkbox:checked");
+                    if(stiChecked.length >=1){
+                        jq('#currently-sti input').prop('disabled', false);
+                    }else{
+                        jq("#currently-sti input[value=1065]").prop("checked", false);
+                        jq("#currently-sti input[value=1066]").prop("checked", false);
+                        jq('#currently-sti input').prop('disabled', true);
+                    }
+
+                //Number of sex partners
+                var val = getValue('multiple-sex-partners.value');
+                if (val == 'true') {
+                    jq('#no-sex-partners input').prop('disabled', false);
+                } else {
+                    jq('#no-sex-partners input').prop('disabled', true);
+                    clearHiddenSections(jq('#no-sex-partners'));
+                }
+            });
+        </script>
+    </ifMode>
+
+    <style>
+        .simple-table {
+            border: solid 1px #DDEEEE;
+            border-collapse: collapse;
+            border-spacing: 0;
+            font: normal 13px Arial, sans-serif;
+        }
+
+        .simple-table thead th {
+            background-color: #DDEFEF;
+            border: solid 1px #DDEEEE;
+            color: #336B6B;
+            padding: 10px;
+            text-align: left;
+            text-shadow: 1px 1px 1px #fff;
+        }
+
+        .simple-table td {
+            border: solid 1px #DDEEEE;
+            color: #333;
+            padding: 10px;
+            text-shadow: 1px 1px 1px #fff;
+        }
+
+        .disabled {
+            color: #ebebe4;
+    </style>
+
+    <div class="ke-form-header">
+        <table style="width: 100%" class="simple-table">
+            <tr>
+                <td>
+                    Screening date: <span style="color:red;"><strong>*</strong></span> <encounterDate id="encounter-date" showTime="true" required="true"/>
+                </td>
+                <td>HTS Provider : <encounterProvider default="currentUser" /></td>
+                <td>Location: <encounterLocation default="GlobalProperty:kenyaemr.defaultLocation" /></td>
+            </tr>
+        </table>
+    </div>
+
+    <div class="ke-form-content">
+        <!-- Population Type  -->
+        <fieldset>
+            <legend>Population Type</legend>
+            <div>
+                Population type :<span style="color:red;"><strong>*</strong></span> &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;
+                <obs conceptId="164930"
+                     answerConceptIds="164928,164929,138643"
+                     answerLabels="General Population,Key Population,Priority Population" id="population-type"
+                     style="radio" />
+            </div>
+            <table id="key-population">
+                <tr>
+                    <td>
+                        <includeIf velocityTest="$patient.gender == 'M'">
+                            <obs conceptId="160581AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" answerConceptIds="105AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA,160578AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA,162277AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA,165100,5622AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                            answerLabels="People who inject drugs, Men who have sex with men, People in prison and other closed settings, Transgender, Other" style="radio" id="chooseKeyPop"/><br/>
+                        </includeIf>
+                        <excludeIf velocityTest="$patient.gender == 'M'">
+                            <obs conceptId="160581AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" answerConceptIds="105AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA,160579AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA,162277AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA,165100,5622AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                            answerLabels="People who inject drugs, Female sex Worker, People in prison and other closed settings, Transgender, Other" style="radio" id="chooseKeyPop"/><br/>
+                        </excludeIf>
+                    </td>
+                </tr>
+            </table>
+            
+            <table id="priority-population">
+                <tr>
+                    <td>
+                        <includeIf velocityTest="($patient.gender == 'F') &amp;&amp; ($patient.age &gt; 9) &amp;&amp; ($patient.age &lt; 25)">
+                            <obs conceptId="138643AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" answerConceptIds="159674AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA,162198AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA,160549AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA,162277AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA,165192"
+                            answerLabels="Fisher folk,Truck driver,Adolescent and young girls,Prisoner,Military and other uniformed services" style="radio" id="choosePriPop"/><br/>
+                        </includeIf>
+                        <excludeIf velocityTest="($patient.gender == 'F') &amp;&amp; ($patient.age &gt; 9) &amp;&amp; ($patient.age &lt; 25)">
+                            <obs conceptId="138643AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" answerConceptIds="159674AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA,162198AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA,162277AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA,165192"
+                            answerLabels="Fisher folk,Truck driver,Prisoner,Military and other uniformed services" style="radio"  id="choosePriPop"/><br/>
+                        </excludeIf>
+                    </td>
+                </tr>
+            </table>
+
+            <br />
+            <table id="tbl-disability">
+                <tr>
+                    <td>
+                        Does client have any disability? &#160;&#160;&#160;&#160;&#160;
+                        <obs id="has-disability" conceptId="164951"
+                             answerConceptIds="1065AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA,1066AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                             answerLabel="Yes,No"
+                             style="radio" />
+                        <br/>
+                    </td>
+                </tr>
+                <tr id="disability" style="display: none;">
+                    <td>  Please indicated the type of disability : <br/>
+                        <obs conceptId="162558AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" answerConceptId="120291AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                             answerLabel="Hearing impairment" style="checkbox" /><br/>
+                        <obs conceptId="162558AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" answerConceptId="147215AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                             answerLabel="Visual impairment" style="checkbox" /><br/>
+                        <obs conceptId="162558AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" answerConceptId="151342AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                             answerLabel="Mentally Challenged" style="checkbox"  /><br/>
+                        <obs conceptId="162558AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" answerConceptId="164538AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                             answerLabel="Physically Challenged" style="checkbox" /><br/>
+                        <obs conceptId="162558AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" answerConceptId="5622AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                             answerLabel="Other" style="checkbox" id="has-other-disability"  /><br/>
+
+                       <table id="tbl-other-disability" style="display: none;">
+                            <tr>
+                                <td>  &#160;&#160;&#160; Specify :
+                                    <obs id="other-disability" conceptId="160632" />
+                                    &#160;&#160;&#160;
+                                </td>
+                            </tr>
+                        </table>
+                    </td>
+                </tr>
+            </table>
+
+        </fieldset>
+        
+        <fieldset>
+            <legend>Department/Coverage</legend>
+            <table class="simple-table">
+                <tr>
+                    <td>Department : <span style="color:red;"><strong>*</strong></span>  </td>
+                    <td>
+                        <obs conceptId="159936"
+                             answerConceptIds="160542,5485,160473,160538,159940,163488"
+                             answerLabels="OPD:Out-patient department,IPD:In-patient department,Emergency,PMTCT,VCT,Community outreach"
+                             style="dropdown" id="department"/>
+                    </td>
+                </tr>
+                <tr>
+                    <td>Patient Type: <span style="color:red;"><strong>*</strong></span></td>
+                    <td>
+                        <obs conceptId="164932" id="patient-type"
+                             answerConceptIds="164163AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA,164953"
+                             answerLabels="HP:Hospital Patient,NP:Non-Hospital Patient"
+                             style="radio" />
+                    </td>
+                </tr>
+                <!--Adult Questions-->
+                <includeIf velocityTest="$patient.age &gt; 17">
+                <tr>
+                    <td>Client a health care worker? <span style="color:red;"><strong>*</strong></span></td>
+                    <td>
+                        <obs conceptId="5619AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                             answerConceptIds="1065AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA,1066AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                             answerLabels="Yes,No"
+                             style="radio" id="health-worker" />
+                    </td>
+                </tr>
+                </includeIf>
+                <tr id="index-relationship">
+                    <td>Client has any relationship with an index client? <span style="color:red;"><strong>*</strong></span></td>
+                    <td>
+                     <excludeIf velocityTest="$patient.age &lt; 10">
+                        <obs conceptId="166570AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" answerConceptId="163565AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                             answerLabel="Sexual Contact" style="checkbox" id="sexual-contact"/><br/>
+                     </excludeIf>
+                        <obs conceptId="166570AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" answerConceptId="166606AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                             answerLabel="Social Contact" style="checkbox" id="social-contact" /><br/>
+                        <obs conceptId="166570AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" answerConceptId="166517AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                             answerLabel="Needle Sharing" style="checkbox" id="needle-sharing-contact" /><br/>
+                        <obs conceptId="166570AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" answerConceptId="1107AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                             answerLabel="None" style="checkbox" id="index-error"/><br/>
+                    </td>
+                </tr>
+            </table>
+        </fieldset>
+
+        <fieldset>
+            <legend>HTS Strategy</legend>
+            <table id="tbl-hts-strategy">
+                <tr>
+                    <td>Indicate HTS strategy used: &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;
+                        <obs class="hts-strategy"
+                             id="strategy"
+                             conceptId="164956"
+                             answerConceptIds="164163AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA,
+                                               164953,
+                                               164954,
+                                               164955,
+                                               159938AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA,
+                                               159939AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA,
+                                               161557AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA,
+                                               166606AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA,
+                                               5622AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                             answerLabels="HP: Hospital Patient Testing,
+                                           NP: HTS for non-patients,
+                                           VI:Integrated VCT Center,
+                                           Stand Alone VCT Center,
+                                           Home Based Testing,
+                                           MO: Mobile Outreach HTS,
+                                           Index testing,
+                                           SNS - Social Networks,
+                                           O: Others"
+                             required="true"
+                        />
+                    </td>
+                    <td>
+                        <table id="tbl-other-strategy" style="display: none;">
+                             <tr>
+                                <td>  &#160;&#160;&#160; Specify :
+                                    <obs id="other-strategy" conceptId="163761" />
+                                    &#160;&#160;&#160;
+                                </td>
+                           </tr>
+                          </table>
+                    </td>
+                </tr>
+            </table>
+        </fieldset>
+
+        <fieldset>
+            <legend>HTS Entry Point</legend>
+            <table id="tbl-hts-entry-point">
+                <tr>
+                    <td>Indicate HTS entry point: &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;
+                        <includeIf velocityTest="$patient.gender == 'M'">
+                            <obs id="hts-entry-point"
+                                conceptId="160540"
+                                answerConceptIds="5485,
+                                                160542,
+                                                162181,
+                                                160552,
+                                                160538,
+                                                160456,
+                                                1623,
+                                                160541,
+                                                159940,
+                                                162223,
+                                                160546,
+                                                160522,
+                                                163096,
+                                                159938,
+                                                159939,
+                                                5622"
+                                answerLabels="In Patient Department(IPD),
+                                            Out Patient Department(OPD),
+                                            Peadiatric Clinic,
+                                            Nutrition Clinic,
+                                            PMTCT - ANC,
+                                            PMTCT - MAT,
+                                            PMTCT - PNC,
+                                            TB,
+                                            VCT,
+                                            VMMC,
+                                            STI Clinic,
+                                            Emergency,
+                                            Community Testing,
+                                            Home Based Testing,
+                                            Mobile Outreach,
+                                            Other"
+                                required="true"
+                            />
+                        </includeIf>
+                        <includeIf velocityTest="$patient.gender == 'F'">
+                            <obs id="hts-entry-point"
+                                conceptId="160540"
+                                answerConceptIds="5485,
+                                                160542,
+                                                162181,
+                                                160552,
+                                                160538,
+                                                160456,
+                                                1623,
+                                                160541,
+                                                159940,
+                                                160546,
+                                                160522,
+                                                163096,
+                                                159938,
+                                                159939,
+                                                5622"
+                                answerLabels="In Patient Department(IPD),
+                                            Out Patient Department(OPD),
+                                            Peadiatric Clinic,
+                                            Nutrition Clinic,
+                                            PMTCT - ANC,
+                                            PMTCT - MAT,
+                                            PMTCT - PNC,
+                                            TB,
+                                            VCT,
+                                            STI Clinic,
+                                            Emergency,
+                                            Community Testing,
+                                            Home Based Testing,
+                                            Mobile Outreach,
+                                            Other"
+                                required="true"
+                            />
+                        </includeIf>
+                    </td>
+                </tr>
+            </table>
+        </fieldset>
+
+        <fieldset>
+            <legend>History of HIV Testing</legend>
+            <table class="simple-table">
+                <!--HEI Questions-->
+                <includeIf velocityTest="$patient.age &lt; 10">
+                <tr id="mothers-status">
+                    <td>
+                        Mother's HIV Status : <span style="color:red;"><strong>*</strong></span>
+                    </td>
+                    <td>
+                        <obs id="mothers-hiv-status" conceptId="1396AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                             answerConceptIds="703,664,1067"
+                             answerLabels="Positive,Negative,Unknown"
+                             style="radio" />
+                    </td>
+                </tr>
+                </includeIf>
+                <tr>
+                    <td>Tested for HIV before : <span style="color:red;"><strong>*</strong></span></td>
+                    <td>
+                        <obs conceptId="164401"
+                             id="test-history"
+                             answerConceptIds="1065,1066"
+                             answerLabels="Yes,No"
+                             style="radio" />
+                    </td>
+                    <td>
+                        <table id="test-result">
+                            <tr id="testResult">
+                                <td> Who performed the test?:</td>
+                                <td>
+                                    <obs conceptId="165215"
+                                         answerConceptIds="5619AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA,164952"
+                                         answerLabels="HTS Provider,Self Tested"
+                                         style="radio"  id="tester"  answerSeparator="&lt;br /&gt;&lt;br /&gt;" />
+                                </td>
+                            </tr>
+                        </table>
+                    </td>
+                    <td>
+                        <table>
+                            <tr id="tr-art-start-date">
+                                <td>
+                                    Test Result :
+                                    <obs id="ever-tested" conceptId="159427"
+                                         answerConceptIds="703,664,1067"
+                                         answerLabels="Positive,Negative,Unknown"
+                                         style="dropdown" />
+                                </td>
+                                <td> Date Tested:
+                                    <obs id="date-tested" conceptId="164400" />
+                                    <span class="value"><recentObs conceptId="164400AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" /></span>
+
+
+                                </td>
+                                <td>
+                                <table id="positive-client">
+                                    <tr>
+                                        <td width="250">Client started on ART:
+                                                <obs conceptId="165240"
+                                                     id="started-art"
+                                                     answerConceptIds="1065,1066"
+                                                     answerLabels="Yes,No" />
+                                            </td>
+                                            <td> CCC Number:
+                                                <obs class="upn" conceptId="162053" id="upn-concept" size ="20" />
+                                                <span id="upnError" class="error"></span>
+                                            </td>
+                                    </tr>
+                                </table>
+                                </td>
+                            </tr>
+                        </table>
+                    </td>
+                </tr>
+            </table>
+        </fieldset>
+        <fieldset id="fs-risk-assessment">
+            <legend>Risk Assessment</legend>
+            <div>
+                Client Sexual Behaviour Assessment:
+            </div>
+            <table class="simple-table">
+                <tr>
+                    <includeIf velocityTest="$patient.age &lt; 10">
+                        <td>Has the child ever been defiled?  <span style="color:red;"><strong>*</strong></span></td>
+                    </includeIf>
+                    <includeIf velocityTest="$patient.age &gt; 9">
+                        <td>Has the client ever had sex?  <span style="color:red;"><strong>*</strong></span></td>
+                    </includeIf>
+                    <td>
+                        <obs conceptId="5569AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                             style="yes_no" id="ever-had-sex" />
+                    </td>
+                </tr>
+            </table>
+            <table class="simple-table" id="tr-sexually-active">
+                <tr>
+                    <td>Is the client sexually active?</td>
+                    <td>
+                        <obs conceptId="160109AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                             answerConceptIds="1065AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA,1066AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA,162570AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                             answerLabels="Yes,No,Declined to answer"
+                             style="radio" id="active-sexually" />
+                    </td>
+                </tr>
+                <tr>
+                    <td>Has the client had a new sexual partner in the last 3 months?</td>
+                    <td>
+                        <obs conceptId="167144AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                             answerConceptIds="1065AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA,1066AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA,162570AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                             answerLabels="Yes,No,Declined to answer"
+                             style="radio" id="new-partner"/>
+                    </td>
+                </tr>
+                <tr>
+                    <td>Partner HIV status</td>
+                    <td>
+                        <obs conceptId="1436AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                             id="partner-hiv-status"
+                             answerConceptIds="703AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA,664AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA,1067AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA,162570AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                             answerLabels="HIV Positive,HIV Negative,Unknown,Declined to answer" style="radio"/>
+                    </td>
+                </tr>
+                <tr>
+                    <td>Discordant Couple </td>
+                    <td>
+                        <obs id="couple-discordant" conceptId="6096AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                             answerConceptIds="1065AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA,1066AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                             style="radio" answerLabels="Yes,No"/>
+                    </td>
+                </tr>
+                <tr>
+                    <td>Have you engaged in unprotected sex with more than one sexual partner in the last 12 months?  </td>
+                    <td> <obs id="multiple-sex-partners" conceptId="5568AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                             style="yes_no"/>
+                        </td>
+                    <td> How many sexual partners? </td>
+                            <td> <obs id="no-sex-partners" conceptId="5570AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"/>  </td>
+                </tr>
+                <tr>
+                    <td>Does the client engage in sex under the influence of alcohol/drugs? </td>
+                    <td>
+                        <obs id="alcoholic-sex" conceptId="165088"
+                             answerConceptIds="1066AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA,1385AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA,165027"
+                             style="radio" answerLabels="Not at all,Sometimes,Always"/>
+                    </td>
+                </tr>
+                <tr>
+                    <td>Have you ever had unprotected sex in exchange of money or other material gains?</td>
+                    <td>
+                        <obs id="money-sex" conceptId="160579AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                             answerConceptIds="1065AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA,1066AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA,162570AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                             style="radio" answerLabels="Yes,No,Declined to answer"/>
+                    </td>
+                </tr>
+                <tr>
+                    <td>Have you recently had any incident of condom burst?</td>
+                    <td>
+                        <obs id="condom-burst" conceptId="166559AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                             answerConceptIds="1065AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA,1066AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA,162570AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                             style="radio" answerLabels="Yes,No,Declined to answer"/>
+                    </td>
+                </tr>
+                <tr>
+                    <td>Have you engaged in unprotected sex with someone you don’t know their HIV status in the last 12 months?
+                        &#160;&#160;&#160;&#160;
+                     </td>
+                    <td>
+                        <obs id="stranger-sex" conceptId="159218AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                             answerConceptIds="1065AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA,1066AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA,162570AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                             style="radio" answerLabels="Yes,No,Declined to answer"/>
+                    </td>
+                </tr>
+                <tr>
+                    <td>Have you had unprotected sex with someone who has known HIV positive status? ?</td>
+                    <td>
+                        <obs id="known-positive" conceptId="163568AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                             answerConceptIds="163289AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA,1066AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA,162570AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                             style="radio" answerLabels="Yes,No,Declined to answer"/>
+                    </td>
+                </tr>
+            </table>
+            <excludeIf velocityTest="$patient.age &lt; 10">
+                <table class="simple-table">
+                    <tr>
+                        <td>Has the client recently experienced GBV? <span style="color:red;"><strong>*</strong></span></td>
+                        <td>
+                            <obs id="experienced-gbv" conceptId="167161"
+                                answerConceptIds="1065AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA,1066AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA,162570AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                                style="radio" answerLabels="Yes,No,Declined to answer"/>
+                        </td>
+                    </tr>
+                    <tr id="experienced-physical-violence">
+                        <td>
+                        <obs conceptId="167145AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" answerConceptId="1065AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                            answerLabel="Sexual violence" style="checkbox" id="sexual-violence" /><br/>
+                        <obs conceptId="160658AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" answerConceptId="1065AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                            answerLabel="Emotional abuse" style="checkbox" id="emotional-violence" /><br/>
+                        <obs conceptId="165205" answerConceptId="1065AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                            answerLabel="Physical violence" style="checkbox" id="physical-violence"/><br/>
+                        </td>
+                    </tr>
+                </table>
+            </excludeIf>
+            <table class="simple-table">
+                <tr>
+                    <td>Has the client received any of the following services recently?</td>
+                </tr>
+                <!--Adult Questions-->
+                <includeIf velocityTest="$patient.age &gt; 14">
+                <tr>
+                    <td>&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;
+                        <obs conceptId="165269" answerConceptId="1065AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                             answerLabel="PrEP" style="checkbox" id="prep-service" /><br/>
+                    </td>
+                    <td>Is the client currently on PrEP? </td>
+                    <td>
+                        <obs conceptId="165203"
+                             answerConceptIds="1065AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA,1066AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA,162570AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                             style="radio" answerLabels="Yes,No,Declined to answer" id="currently-prep"/>
+                    </td>
+                </tr>
+                </includeIf>
+                <tr>
+                    <td>&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;
+                        <obs conceptId="164845AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                             answerConceptId="1065AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                             answerLabel="PEP" style="checkbox" id="pep-service" />
+                    </td>
+                    <td>Has the client used PEP in the last 3 months?  </td>
+                    <td>
+                        <obs conceptId="1691AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                             style="yes_no"  id="currently-pep" />
+                    </td>
+                </tr>
+                <excludeIf velocityTest="$patient.age &lt; 10">
+                    <tr>
+                        <td>&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;
+                            <obs conceptId="165098"
+                                answerConceptId="1065AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                                answerLabel="STI" style="checkbox" id="sti-service" />
+                        </td>
+                        <td>Has the client had an STI in the last 3 months?  </td>
+                        <td>
+                            <obs conceptId="165200"
+                                answerConceptIds="1065AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA,1066AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA,162570AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                                style="radio" answerLabels="Yes,No,Declined to answer" id="currently-sti"/>
+                        </td>
+                    </tr>
+                </excludeIf>
+            </table>
+            
+            <table class="simple-table">
+
+                <tr id="tr-needle-shared">
+                    <td>Have you ever shared a needle while injecting drugs with someone else?</td>
+                    <td>
+                        <obs conceptId="165090"
+                             answerConceptIds="1065AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA,1066AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA,162570AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                             style="radio" answerLabels="Yes,No,Declined to answer" id="needle-shared"/>
+                    </td>
+                </tr>
+                <tr id="tr-needle-stick">
+                    <td>Has the client had needle stick injuries? <span style="color:red;"><strong>*</strong></span></td>
+                    <td>
+                        <obs conceptId="165060"
+                             answerConceptIds="153574AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA,1066AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                             style="radio" answerLabels="Yes,No" id="needle-stick"/>
+                    </td>
+                </tr>
+                <tr>
+                    <td>Has the client been screened for TB? <span style="color:red;"><strong>*</strong></span></td>
+                    <td>
+                        <obs conceptId="165197"
+                             answerConceptIds="1065AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA,1066AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA,162570AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                             style="radio" answerLabels="Yes,No,Declined to answer" id="screened-tb"/>
+                    </td>
+                </tr>
+                <tr id="screening-questions">
+                    <td>
+                        <table class="simple-table">
+                            <obsgroup groupingConceptId="166661AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA">
+                                <tr>
+                                    <td>Cough of any duration:  &#160;&#160; </td>
+                                    <td><obs conceptId="1729AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" labelText=" " answerConceptIds="159799AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA,1066AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" style="radio" answerLabels="Yes,No" id="scr-cough" /></td>
+                                </tr>
+                                <tr>
+                                    <td>Fever: &#160;&#160;</td>
+                                    <td><obs conceptId="1729AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" labelText=" " answerConceptIds="1494AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA,1066AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" style="radio" answerLabels="Yes,No" id="scr-fever" /></td>
+
+                                </tr>
+                                <tr>
+                                    <td>Noticeable weight loss or poor weight gain: &#160; </td>
+                                    <td><obs conceptId="1729AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" labelText=" " answerConceptIds="832AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA,1066AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" style="radio" answerLabels="Yes,No" id="scr-weight" /></td>
+                                </tr>
+                                <!--Adult Questions-->
+                                <includeIf velocityTest="$patient.age &gt; 15">
+                                    <tr>
+                                        <td>Night sweats: &#160;&#160;</td>
+                                        <td><obs conceptId="1729AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" labelText=" " answerConceptIds="133027AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA,1066AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" style="radio" answerLabels="Yes,No" id="scr-sweat" /></td>
+                                    </tr>
+                                </includeIf>
+                                <!--Paed Questions-->
+                                <includeIf velocityTest="$patient.age &lt; 16">
+                                    <tr>
+                                        <td>Contact with a TB Case: &#160;&#160;</td>
+                                        <td><obs conceptId="1729AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" labelText=" " answerConceptIds="124068AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA,1066AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" style="radio" answerLabels="Yes,No" id="scr-contact"/></td>
+                                    </tr>
+                                    <includeIf velocityTest="$patient.age &lt; 10">
+                                        <tr>
+                                            <td>Lethargy, less playful than usual: &#160;&#160;</td>
+                                            <td><obs conceptId="1729AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" labelText=" " answerConceptIds="116334AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA,1066AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" style="radio" answerLabels="Yes,No" id="scr-lethergy" /></td>
+                                        </tr>
+                                    </includeIf>
+                                </includeIf>
+                            </obsgroup>
+                            <tr>
+                                <td>
+                                    Resulting TB Status:
+                                </td>
+                                <td colspan="3">
+                                    <obs id="tb-result-status" conceptId="1659AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" labelText=""
+                                                            answerConceptIds="1660AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA,
+                                                                                142177AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA,
+                                                                                1662AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                                        style="radio" answerLabels="No TB Signs,Presumed TB,TB Confirmed" />
+                                </td>
+                            </tr>
+                        </table>
+                    </td>
+                    <td></td>
+                </tr>
+                <tr>
+                    <td>Traditional /non-medical procedures e.g. scarification, plastic tooth extraction, Circumcision, uvulectomy etc <span style="color:red;"><strong>*</strong></span></td>
+                    <td>
+                        <obs conceptId="166365AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"   id="scarification"
+                             answerConceptIds="1065AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA,1066AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                             style="radio" answerLabels="Yes,No" />
+                    </td>
+                </tr>
+            </table>
+            
+        </fieldset>
+
+        <includeIf velocityTest="($patient.age &lt; 10)">
+            <fieldset id="fs-children-eligibility">
+                <legend>Children Eligibility</legend>
+                <table class="simple-table">
+                    <obsgroup groupingConceptId="159392AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA">
+                        <tr id="children-eligibility">
+                            <td>  For children if any of the below are present , explore with the guardian and determine HTS eligibility
+                                &#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;
+                            </td>
+                            <td>
+                                <obs conceptId="165908AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" answerConceptId="115122AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                                    answerLabel="Malnutrition" style="checkbox" id="malnutrition" /><br/>
+                                <obs conceptId="165908AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" answerConceptId="5050AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                                    answerLabel="Failure to thrive (age and child's growth rate has discrepancy)" style="checkbox" id="growth-rate" /><br/>
+                                <obs conceptId="165908AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" answerConceptId="127833AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                                    answerLabel="Recurrent infections" style="checkbox" id="infections" /><br/>
+                                <obs conceptId="165908AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" answerConceptId="1174AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                                    answerLabel="No parent (are orphaned)" style="checkbox" id="orphaned"/><br/>
+                                <obs conceptId="165908AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" answerConceptId="163718AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                                    answerLabel="Parents /siblings who recently tested HIV positive" style="checkbox" id="parent-positive"/><br/>
+                                <obs conceptId="165908AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" answerConceptId="140238AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                                    answerLabel="Prolonged fever of unknown origin" style="checkbox" id="prolonged-fever"/><br/>
+                                <obs conceptId="165908AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" answerConceptId="5632AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                                    answerLabel="Children >18 months who are still breasteeding or wet nursing" style="checkbox" id="still-breastfeering"/><br/>
+                            </td>
+                        </tr>
+                    </obsgroup>
+                </table>
+            </fieldset>
+        </includeIf>
+
+        <includeIf velocityTest="($patient.gender == 'F') &amp;&amp; ($patient.age &gt; 9)">
+          <fieldset id="fs-pregnancy-assessment">
+            <legend>Pregnancy Assessment</legend>
+            <table class="simple-table">
+                <tr>
+                    <td> Client currently pregnant? <span style="color:red;"><strong>*</strong></span> </td>
+                    <td>
+                        <obs conceptId="5272AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                             answerConceptIds="1065AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA,1066AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA,162570AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                             style="radio" answerLabels="Yes,No,Declined to answer" id="pregnant" />
+                    </td>
+                </tr>
+                <tr>
+                    <td> Breastfeeding mother</td>
+                    <td>
+                        <obs conceptId="5632AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                             answerConceptIds="1065AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA,1066AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA,162570AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                             answerLabels="Yes,No,Declined to answer"
+                             style="radio" id="breastfeeding" />
+                    </td>
+                </tr>
+            </table>
+        </fieldset>
+        </includeIf>
+
+        <fieldset id="eligible-for-test">
+            <legend>Eligible for Testing</legend>
+            <table class="simple-table">
+                <tr>
+                    <td>Client eligible for testing : <span style="color:red;"><strong>*</strong></span> </td>
+                    <td>
+                        <obs conceptId="162699" id="eligible-test"
+                             answerConceptIds="1065,1066"
+                             answerLabels="Yes,No"
+                             style="radio" />
+                    </td>
+                </tr>
+            </table>
+        </fieldset>
+
+        <fieldset>
+            <legend>Generate HIV Risk Category</legend>
+            <div id="div-ml-prediction">
+                <table>
+                    <tr>
+                        <td>
+                            <button type="button" class="ke-getscore-button" id="btn-ml-prediction">Get HIV
+                                risk category
+                            </button>
+                            <span style="color:red;"><strong>*</strong></span>
+                        </td>
+                        <td width="50px"></td>
+                        <td><div id="ml-prediction-risk-category"></div></td>
+                        <td><div id="ml-prediction-desc" style="font-style:italic"></div></td>
+                    </tr>
+                    <tr style="display: none">
+                        <td>
+                            <obs id="algorithm_result_category"
+                                 conceptId="167163AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                                 answerConceptIds="1407,1499,1408,167164"
+                                 style="dropdown" />
+                        </td>
+                        <td>
+                            <obs id="algorithm_result_score" conceptId="167162" />
+                        </td>
+                    </tr>
+                </table>
+            </div>
+            <br/>
+        </fieldset>
+
+        <fieldset id="testing-recommended">
+            <legend>Testing Recommended </legend>
+            <table class="simple-table">
+                <tr>
+                    <td>Did you recommend HIV testing? : <span style="color:red;"><strong>*</strong></span> </td>
+                    <td>
+                        <obs conceptId="167229" id="recommended-test"
+                             answerConceptIds="1065,1066"
+                             answerLabels="Yes,No"
+                             style="radio" />
+                    </td>
+                </tr>
+            </table>
+        </fieldset>
+
+        <fieldset id="supported-reason" style="display: none">
+            <legend>Supported Reason</legend>
+            <table class="simple-table">
+                <tr id="tr-testing-reasons">
+                    <td>
+                        Why did you recommend testing?: <span style="color:red;"><strong>*</strong></span>
+                    </td>
+                    <td colspan="3">
+                        <obs id="tb-testing-reasons" conceptId="164082AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" labelText=""
+                                                   answerConceptIds="165087,
+                                                                     165091,
+                                                                     1163AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                             style="radio" answerLabels="Client is eligible, Based on HIV Risk category from EMR, Both eligible and risk
+category." />
+                    </td>
+                </tr>
+                <tr id="tr-not-testing-reasons">
+                    <td>
+                        Why did you NOT recommend testing?: <span style="color:red;"><strong>*</strong></span>
+                    </td>
+                    <td colspan="3">
+                        <obs id="tb-not-testing-reasons" conceptId="160416AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" labelText=""
+                                                   answerConceptIds="165078,
+                                                                     165091,
+                                                                     1163AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                             style="radio" answerLabels="Client is NOT eligible, Based on HIV Risk category from EMR, Both NOT eligible and risk
+category." />
+                    </td>
+                </tr>
+            </table>
+        </fieldset>
+
+        <fieldset id="refering-for-testing">
+            <legend>Referring for Testing</legend>
+            <table class="simple-table">
+                <tr>
+                    <td>Client referred for testing : <span style="color:red;"><strong>*</strong></span> </td>
+                    <td>
+                        <obs conceptId="1788AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" id="referred"
+                             answerConceptIds="1065,1066"
+                             answerLabels="Yes,No"
+                             style="radio"/>
+                    </td>
+                </tr>
+                <obsgroup groupingConceptId="165078">
+                    <tr id="tr-reasons-not-refered" style="display: none;">
+                        <td> If No, Choose a reason below </td>
+                        <td>
+                            <obs conceptId="159803AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" answerConceptId="167156AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                                 answerLabel="Declined testing" style="checkbox"  id="decline-testing"/><br/>
+
+                            <includeIf velocityTest="$patient.age &gt; 9">
+                                <obs conceptId="159803AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" answerConceptId="165029"
+                                    answerLabel="Wants to test with partner" style="checkbox" id="wants-partner" /><br/>
+                                <obs conceptId="159803AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" answerConceptId="141814AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                                    answerLabel="Fear of violent partner" style="checkbox" id="violent-partner"/><br/>
+                            </includeIf>
+
+                            <obs conceptId="159803AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" answerConceptId="160589AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                                 answerLabel="Stigma related issues" style="checkbox" id="stigma" /><br/>
+
+                            <obs conceptId="159803AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" answerConceptId="155974AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                                 answerLabel="No counselor to test" style="checkbox" id="lack-counsellor" /><br/>
+
+                            <obs conceptId="159803AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" answerConceptId="158948AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                                 answerLabel="High workload for the staff" style="checkbox" id="heavy-workload" /><br/>
+
+                            <obs conceptId="159803AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" answerConceptId="163293AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                                 answerLabel="Too sick" style="checkbox" id="too-sick"/><br/>
+
+                            <obs conceptId="159803AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" answerConceptId="160352AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                                 answerLabel="Lack of test kits" style="checkbox" id="lack-of-test-kits"/><br/>
+
+                            <obs conceptId="159803AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" answerConceptId="5622AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                                 answerLabel="Other" style="checkbox" id="other-decline-reason" /><br/>
+                        </td>
+                        <td>
+                            <br/>
+                            <table id="tbl-other-decline-reason">
+                                <tr>
+                                    <td>  &#160;&#160;&#160; Specify :
+                                        <obs id="other-reason-specify" conceptId="160632AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" />
+                                        &#160;&#160;&#160;
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+                </obsgroup>
+            </table>
+        </fieldset>
+
+    </div>
+    <div class="ke-form-footer">
+        <submit/>
+    </div>
+
+</htmlform>
